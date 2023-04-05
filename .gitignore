@@ -1,0 +1,6 @@
+.vscode/
+*.db
+
+svgs/
+__pycache__/
+.venv/

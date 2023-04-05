@@ -1,0 +1,102 @@
+@ctype = Content-Type
+@appjson = application/json
+
+@host = http://localhost:8000
+@version = HTTP/1.1
+
+@token = secretkeypleaseecret
+
+
+POST {{host}}/microservices {{version}}
+Content-Type: application/json
+
+{
+    "microservice": "customers",
+    "location": "http://locahost:8000",
+    "passkey": "secretkeypleaseecret"
+}
+
+###
+
+POST {{host}}/events {{version}}
+Content-Type: {{appjson}}
+Authorization: bearer {{token}}
+
+{
+    "event": "customers.v1.products.created",
+    "microservice": "customers",
+    "schemata": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://example.com/product.schema.json",
+        "title": "Product",
+        "description": "A product from Acme's catalog",
+        "type": "object",
+        "properties": {
+            "product_id": {
+                "description": "The unique identifier for a product",
+                "type": "integer"
+            }
+        },
+        "required": [ "product_id" ]
+    }
+}
+
+###
+
+POST {{host}}/actions {{version}}
+Content-Type: {{appjson}}
+Authorization: bearer {{token}}
+
+{
+    "event": "identities.v1.identities.created",
+    "deduper": 1000,
+    "payload": {
+        "id": 114
+    }
+}
+
+###
+
+POST {{host}}/subscribers {{version}}
+Content-Type: {{appjson}}
+
+{
+    "event": "customers.v1.products.created",
+    "microservice": "notifications",
+    "endpoint": "/h1/customer-created",
+    "description": "when customer is created handle it in orders services"
+}
+
+###
+
+
+# GET Methods
+
+
+GET {{host}}/microservices {{version}}
+###
+
+GET {{host}}/events {{version}}
+###
+
+GET {{host}}/actions {{version}}
+###
+
+GET {{host}}/subscribers {{version}}
+Accept: {{appjson}}
+###
+
+
+GET {{host}}/gists {{version}}
+###
+
+
+# PUT METHODS
+
+PUT {{host}}/v1/microservices/customers
+Content-Type: {{appjson}}
+
+{
+    "location": "http://0.0.0.0:8000",
+    "passkey": "secretkeypleaseecret"
+}
