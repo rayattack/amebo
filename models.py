@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional, Union
 
 from pydantic import BaseModel as Model, validator, Field, AnyHttpUrl
 
@@ -30,7 +31,7 @@ class Event(Model):
 
 
 class Action(Model):
-    action: int | None
+    action: Optional[int]
     event: str
     deduper: str
     payload: dict
@@ -38,7 +39,7 @@ class Action(Model):
 
 
 class Subscriber(Model):
-    subscriber: int | None
+    subscriber: Optional[int]
     event: str
     microservice: str
     endpoint: str

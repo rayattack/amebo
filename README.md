@@ -11,10 +11,10 @@ serve as a full blown replacement for Kafka, RabbitMQ, SQS/SNS.
 -----------------
 
 Amebo has only 4 concepts (first class objects) to understand or master - no long thing.
-- Microservices/Modules: These are applications you register on amebo - they send and receive events ;-)
+- Microservices/Modules: These are applications or modules you register on amebo - they send and receive events ;-)
 - Events: Something that can happen in an application, they are registered on Amebo by Microservices/Modules
+- Actions: The occurence of an event (action on event), usually has a payload that is sent to all applications subscribed to the event
 - Subscribers: HTTP endpoints registered by Microservices/Modules to watch specific/particular events
-- Actions: An occurence of an event, usually has a payload that is sent to all applications subscribed to the event
 
 &nbsp;
 
@@ -74,11 +74,11 @@ With the following JSON schema:
 
 1. GUI for tracking events, actions, subscribers. Easy discovery of what events exist, what events failed and GUI retry for specific subscribers
 
-1. Gossiping is HTTP native i.e. subscribers receive gossips at pre-registered endpoints
+1. Gossiping is HTTP native i.e. subscribers receive http requests automatically at pre-registered endpoints
 
 1. Infinite retries (stop after $MAX_RETRIES and $MAX_MINUTES coming soon)
 
 
 # Trivia
 
-The word `amebo` is a West African (Nigerian origin - but used in Ghan, Benin, Cameroon etc.) slang used to describe a talkative, never mind their business individual (a chronic gossip).
+The word `amebo` is a West African (Nigerian origin - but used in Ghana, Benin, Cameroon etc.) slang used to describe a talkative, never mind their business individual (a chronic gossip).

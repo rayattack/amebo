@@ -43,13 +43,13 @@ def get_params(params: list, req: HttpRequest):
 def get_timeline(timeline, step_or_filter, column: str = None):
     if timeline:
         dateline = datetime.now()
-        match timeline.lower():
-            case 'month':
-                dateline = dateline - timedelta(days=31)
-            case 'week':
-                dateline = dateline - timedelta(days=7)
-            case 'today':
-                dateline = dateline - timedelta(hours=24)
+        value = timeline.lower()
+        if value == 'month':
+            dateline = dateline - timedelta(days=31)
+        elif value == 'week':
+            dateline = dateline - timedelta(days=7)
+        elif value == 'today':
+            dateline = dateline - timedelta(hours=24)
 
         adjunction = 'AND' if step_or_filter.dirty else 'WHERE'
         return f"{adjunction} {column or 'timestamped'} > DATETIME('{dateline.isoformat()}')"
