@@ -1,10 +1,26 @@
+from os import environ
 from sqlite3 import connect, Connection
 
+
 # installed libs
+from dotenv import load_dotenv
 from washika import Washika as Router
 
 # src code
 from scripts import initdbscript
+
+
+def administratorup(router: Router) -> str:
+    db: Connection = router.peek('db')
+    username = environ.get('ADMINISTRATOR_USERNAME')
+    password = environ.get('ADMINISTRATOR_PASSWORD')
+    try:
+        # credentials table dropped every time so this is possible
+        db.execute(f'''
+            INSERT INTO credentials VALUES(?, ?);
+        ''', (username, password))
+    except:
+        pass
 
 
 async def downsqlite(router: Router):
@@ -16,7 +32,12 @@ async def downsqlite(router: Router):
         db: db.close()
 
 
+async def envup(router: Router):
+    load_dotenv()
+
+
 async def initdb(router: Router):
+    """TODO: enable switching db backend between redis, pg, sqlite"""
     try:
         db: Connection = router.peek('db')
         db.executescript(initdbscript)

@@ -24,6 +24,7 @@ def expects(Model: BaseModel):
                 mname = model.__class__.__name__.lower()
                 ctx.keep(mname, model)
             except Exception as exc:
+                print(exc)
                 res.status = HTTPStatus.BAD_REQUEST
                 res.body = dumps({'error': f'{exc}'})
                 return

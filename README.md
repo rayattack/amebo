@@ -2,19 +2,41 @@
 
 Amebo is the simplest pubsub server to use, deploy, understand or maintain. It was
 built to enable communication between applications i.e. microservices or
-modules (if you are using monoliths), and can
-serve as a full blown replacement for Kafka, RabbitMQ, SQS/SNS.
+modules (if you are using monoliths), and hopes to be able to serve as a small
+but capable and simpler alternative to Kafka, RabbitMQ, SQS/SNS.
+
+**STILL IN DEVELOPMENT: NOT READY FOR Production Use**
 
 &nbsp;
 
-### How It Works
------------------
+## How It Works
+---
+Amebo has only 4 concepts (first class objects) to understand or master.
 
-Amebo has only 4 concepts (first class objects) to understand or master - no long thing.
-- Microservices/Modules: These are applications or modules you register on amebo - they send and receive events ;-)
-- Events: Something that can happen in an application, they are registered on Amebo by Microservices/Modules
-- Actions: The occurence of an event (action on event), usually has a payload that is sent to all applications subscribed to the event
-- Subscribers: HTTP endpoints registered by Microservices/Modules to watch specific/particular events
+&nbsp;
+
+### 1. Applications
+---
+These can be microservices or modules (in a monolith) - that create and receive notifications about [_**events**_](#2-events). All applications must be registered on
+    amebo ;-) before they can publish [_**actions**_](#3-actions).
+
+
+### 2. Events
+---
+This is something that can happen in an [_**application**_](#1-applications) i.e. creating a customer, deleting an order. They are registered
+    on Amebo by their parent [_**application**_](#1-applications), and all events must provide a valid JSON Schema (can be empty "{}") that Amebo
+    can use to validate event actions before sending to [_**subscribers**_](#4-subscribers).
+
+
+### 3. Actions
+---
+An action is a HTTP request sent by an [_**application**_](#1-applications) to Amebo to signal it about the occurence of an event locally. Actions
+    can have a json payload that must match the JSON Schema of its parent event.
+
+### 4. Subscribers
+---
+These are HTTP URLs (can be valid hostname for loopback interface on TCP/IP as well) endpoints registered by [_**applications**_](#1-applications) to
+    receive [_**action**_](#3-actions) payloads.
 
 &nbsp;
 
@@ -27,7 +49,7 @@ pip install amebo
 amebo --workers 2 --address 0.0.0.0:8701
 
 
-# the hardway (manual installation)
+# the hardway (manual installation) BUT not the only way... Sorry, I couldn't resist the pun ;-)
 git clone https://github.com/tersoo/amebo
 mv amebo /to/a/directory/of/your/choosing
 export $PATH=$PATH:/to/a/directory/of/your/choosing/amebo  # add amebo location to your path
@@ -36,18 +58,18 @@ ambeo -w 2 -a 0.0.0.0:8701
 
 &nbsp;
 
-### 1. Register microservices or applications with a secret key
+## 1st : Tell Amebo about all your microservices or applications
+---
 
 `endpoint: /v1/microservices`
-```json
-{
-    "microservice": "customers",
-    "passkey": "some-super-duper-secret-of-the-module-or-microservice",
-    "location": "http://0.0.0.0:3300"
-}
-```
 
-With the following JSON schema:
+<table>
+<tr>
+<th>Schema</th>
+<th>Example Payload<th>
+</tr>
+<tr>
+<td>
 
 ```json
 {
@@ -61,11 +83,155 @@ With the following JSON schema:
     "required": ["microservice", "passkey", "location"]
 }
 ```
+
+</td>
+<td>
+
+```json
+{
+    "microservice": "customers",
+    "passkey": "some-super-duper-secret-of-the-module-or-microservice",
+    "location": "http://0.0.0.0:3300"
+}
+```
+
+</td>
+</tr>
+</table>
+
+
 &nbsp;
 
-### 2. Add events to your microservice
+## 2nd : Register events that can happen in the registered microservices
+---
+
+`endpoint: /v1/events`
+
+<table>
+<tr>
+<th>Endpoint JSON Schema</th>
+<th>Example Payload<th>
+</tr>
+<tr>
+<td>
+
+```json
+{
+    "type": "object",
+    "properties": {
+        "event": {"type": "string"},
+        "microservice": {"type": "string"},
+        "schemata": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string"},
+                "properties": {"type": "object"},
+                "required": {"type": "array"}
+            }
+        }
+    },
+    "required": ["event", "microservice", "schemata"]
+}
+```
+
+</td>
+<td>
+
+```json
+{
+    "event": "customers.v1.created",
+    "microservice": "customers",
+    "schemata": {
+        "$id": "https://your-domain/customers/customer-created-schema-example.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+            "customer_id": {"type": "number"},
+            "first_name": {"type": "string"},
+            "last_name": {"type": "string"},
+            "email": {"type": "string", "format": "email"}
+        },
+        "required": ["customer_id", "email"]
+    }
+}
+```
+
+</td>
+</tr>
+</table>
 
 &nbsp;
+
+## 3rd : Tell Amebo when an event occurs i.e. create an action
+---
+
+`endpoint: /v1/actions`
+
+| Key | Description |
+|---|---|
+| **event** | Identifier name of the event. (As registered in the previous step.) |
+| **deduper** | Deduplication string. used to prevent the same action from being registered twice |
+| **payload** | JSON data (must confirm to the schema registerd with the event) |
+
+&nbsp;
+
+<table>
+<tr>
+<th>Endpoint JSON Schema</th>
+<th>Example Payload<th>
+</tr>
+<tr>
+<td>
+
+```json
+{
+    "type": "object",
+    "properties": {
+        "event": {"type": "string"},
+        "microservice": {"type": "string"},
+        "schemata": {
+            "type": "string",
+            "format": "ipv4 | ipv6 | hostname | idn-hostname"
+        },
+        "location": {"type": "web"}
+    },
+    "required": ["microservice", "passkey", "location"]
+}
+```
+
+</td>
+<td>
+
+```json
+{
+    "event": "customers.v1.created",
+    "microservice": "customers",
+    "schema": {
+        "$id": "https://your-domain/customers/customer-created-schema-example.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+            "event": {"type": "string"},
+            "microservice": {"type": "string"},
+            "schemata": {"type": "string", "format": "ipv4 | ipv6 | hostname | idn-hostname"},
+            "location": {"type": "web"}
+        },
+        "required": ["microservice", "passkey", "location"]
+    },
+    "location": "http://0.0.0.0:3300"
+}
+```
+
+</td>
+</tr>
+</table>
+
+&nbsp;
+
+## Finally: Create an endpoint to receive action notifications from Amebo
+---
+Other applications/modules within the same monolith can create handler endpoints that will be sent the payload with optional
+encryption if an encryption key was provided by the subscriber when registering for the event.
 
 # Why? Advantages over traditional Message Oriented Middleware(s)
 
@@ -81,4 +247,4 @@ With the following JSON schema:
 
 # Trivia
 
-The word `amebo` is a West African (Nigerian origin - but used in Ghana, Benin, Cameroon etc.) slang used to describe a talkative, never mind their business individual (a chronic gossip).
+The word `amebo` is a West African (Nigerian origin - but used in Ghana, Benin, Cameroon etc.) slang used to describe anyone that never keeps what you tell them to themselves. A talkative, never mind their business individual (a chronic gossip).

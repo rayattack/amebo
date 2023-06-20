@@ -9,17 +9,17 @@
     oldPagination: pagination,
 
     idSearch: '',
-    eventSearch: '',
-    deduperSearch: '',
-    payloadSearch: '',
+    actionSearch: '',
+    microserviceSearch: '',
+    schemataSearch: '',
     whenFilter: '',
 
     filterResults(){
         let base = `/v1/actions?pagination=${100}&page=${page}`
         if(this.idSearch) base = `${base}&id=${this.idSearch}`
-        if(this.eventSearch) base = `${base}&event=${this.eventSearch}`
-        if(this.deduperSearch) base = `${base}&deduper=${this.deduperSearch}`
-        if(this.payloadSearch) base = `${base}&payload=${this.payloadSearch}`
+        if(this.actionSearch) base = `${base}&action=${this.actionSearch}`
+        if(this.microserviceSearch) base = `${base}&microservice=${this.microserviceSearch}`
+        if(this.schemataSearch) base = `${base}&schemata=${this.schemataSearch}`
         if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
         fetch(`${base}`)
         .then(response => response.json())
@@ -33,9 +33,9 @@
 
     clearFilter(){
         this.idSearch = '';
-        this.eventSearch = '';
-        this.deduperSearch = '';
-        this.payloadSearch = '';
+        this.actionSearch = '';
+        this.microserviceSearch = '';
+        this.schemataSearch = '';
         this.whenFilter = '';
         isFiltering = false;
         fetchAll();
@@ -43,9 +43,8 @@
 
     checkDirty(){
         if(this.idSearch !== '' ||
-            this.eventSearch !== '' ||
-            this.deduperSearch !== '' ||
-            this.payloadSearch !== '' || this.whenFilter !== ''
+            this.actionSearch !== '' ||
+            this.microserviceSearch !== '' || this.schemataSearch !== '' || this.whenFilter !== ''
         ) {
             this.isFilterable = true;
             return true;
@@ -62,59 +61,127 @@
     <div><span class="font-800 pr-3">Filters:</span></div>
     <div class="pb-3" x-data="{{ commander() }}" x-effect="checkDirty">
         <span class="display-inline-block">
-            <input type="text" placeholder="a. id" style="width: 5em" x-model="idSearch" />
-            <input type="text" placeholder="search by event name..." style="width: 20em" x-model="eventSearch">
-            <input type="text" placeholder="filter by deduplication code" x-model="deduperSearch">
-            <input style="width: 25em" type="text" placeholder="search in action payload..." x-model="payloadSearch">
+            <input type="text" placeholder="action id" style="width: 5em" x-model="idSearch"/>
+            <input type="text" placeholder="action name..." style="width: 14em" x-model="actionSearch" />
+            <input type="text" placeholder="microservice..." style="width: 20em" x-model="microserviceSearch">
+            <input type="text" placeholder="search in json schema payload..." style="width: 25em" x-model="schemataSearch">
             <select x-model="whenFilter">
-                <option>Select Day</option>
-                <template x-for="[val, txt] in Object.entries({today: 'Today', week: 'This Week', month: 'This Month'})" :key="val">
-                    <option :value="val" x-text="txt"></option>
+                <template x-for="[val, txt] in Object.entries({day: 'Today', week: 'This Week', month: 'This Month'})" :key="val">
+                    <option :value="val" x-text="txt" :selected="val === whenFilter"></option>
                 </template>
             </select>
             <button @click="filterResults" :disabled="! isFilterable">
-                <ion-icon name="search" class="font-size-xs"></ion-icon>
+                <img src="/public/icons/search.svg" class="svgxs" />
                 search
             </button>
             <button disabled>&nbsp;</button>
             <button @click.self="clearFilter" :disabled="! isFiltering">
                 clear filter
-                <ion-icon name="leaf-outline" class="font-size-xs"></ion-icon>
+                <img src="/public/icons/leaf-outline.svg" class="svgxs" />
             </button>
         </span>
     </div>
-
     <div class="easel" x-init="calculateHeight($el, 10); fetchAll()">
         <table class="table is-striped is-fullwidth is-hoverable paginated">
             <thead>
-                <th style="width: 5%">Action</th>
-                <th style="width: 30%">Event</th>
-                <th style="width: 10%">Deduper</th>
-                <th>Payload</th>
-                <th style="width: 20%">Timestamped</th>
+                <th style="width: 5%">ID</th>
+                <th style="width: 22%">Action</th>
+                <th style="width: 20%">Microservice</th>
+                <th>Schema</th>
+                <th>Timestamped</th>
             </thead>
-            <tbody x-init="() => { calculateHeight($el, 100); }">
-                <template x-for="action in actions" :key="action.action">
+            <tbody @refresher.window="refreshPage" x-init="() => { calculateHeight($el, 100); }">
+                <template x-for="action in actions">
                     <tr>
-                        <td x-text="action.action" style="width: 5%"></td>
-                        <td x-text="action.event" style="width: 30%"></td>
-                        <td x-text="action.deduper" style="width: 10%"></td>
-                        <td x-text="truncate(JSON.stringify(action.payload, undefined, 2), 100)"></td>
-                        <td x-text="action.timestamped" style="width: 20%"></td>
+                        <td x-text="action.id" style="width: 5%"></td>
+                        <td x-text="action.action" style="width: 22%"></td>
+                        <td x-text="action.microservice" style="width: 20%"></td>
+                        <td x-text="JSON.stringify(action.schemata, undefined, 2).slice(0, 50) + '...'"></td>
+                        <td x-text="action.timestamped"></td>
                     </tr>
                 </template>
             </tbody>
-            <tfoot style="position: sticky; bottom: 0">
-                <tr>
-                    <th>Action</th>
-                    <th>Event</th>
-                    <th>Deduper</th>
-                    <th>Payload</th>
-                    <th>Timestamped</th>
-                </tr>
+            <tfoot>
+                <th>ID</th>
+                <th>Action</th>
+                <th>Microservice</th>
+                <th>Schema</th>
+                <th>Timestamped</th>
             </tfoot>
         </table>
-        {{ pagination() }}
     </div>
+    {{ pagination() }}
 </section>
+{% endblock %}
+
+{% block wizard %}
+<span x-data="{
+    microservices: [],
+    microservice: '',
+    schema: '',
+    action: '',
+    fetchMicroservices(){
+        fetch('/v1/microservices', {
+            method: 'GET'
+        }).then(res => {
+            if(res.status !== 200) throw Error();
+            return res.json()
+        }).then(data => {
+            this.microservices = data;
+        }).catch(err => {
+        })
+    },
+    resetForm(){
+        this.microservice = '';
+        this.action = '';
+        this.schema = '';
+    },
+    saveMicroservice() {
+        fetch('/v1/actions', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                microservice: this.microservice,
+                schemata: this.schema,
+                action: this.action
+            })
+        })
+        .then(response => {
+            if(response.status !== 201) throw Error(response.statusText)
+            return response.json()
+        }).then(data => {
+            ShowFeedback('info', 'Action created')
+            this.resetForm();
+            $dispatch('refresher');
+            showModalContent = false;
+        }).catch(err => {
+            ShowFeedback('error', err.message)
+        })
+    }
+}">
+    <div class="modal-card-body p-5">
+        <div class="brick">
+            <label class="font-800 mr-2">Action Name: </label>
+            <input type="text" class="w-30em" placeholder="Enter a name for your action..." x-model="action">
+        </div>
+        <div class="brick">
+            <label class="font-800 mr-2">Microservice: </label>
+            <div class="select">
+                <select x-model="microservice" id="" x-init="fetchMicroservices">
+                    <option>Select A Microservice</option>
+                    <template x-for="microservice in microservices">
+                        <option :value="microservice.id" x-text="`(${microservice.id}): ${microservice.microservice}`"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+        <div class="brick">
+            <label class="font-800 mr-2">Schema (JSON): </label>
+            <textarea class="w-30em" rows="10" x-model="schema"></textarea>
+        </div>
+    </div>
+    <div class="modal-card-foot">
+        <button @click="saveMicroservice">save microservice</button>
+    </div>
+</span>
 {% endblock %}

@@ -8,17 +8,63 @@ from routerling import Context, HttpRequest, ResponseWriter
 from orjson import dumps, loads
 
 # src code
-from constants import DB, MAX_PAGINATION
+from constants import DB, MAX_PAGINATION, SECRET_KEY
 from libx import Steps
 from models import (
-    Action,
     Event,
+    Credential,
+    Action,
     Location,
     Microservice,
     Subscriber,
 )
 from middleware import expects, jsonify
-from utils import get_pagination, get_timeline
+from utils import get_pagination, get_timeline, tokenize
+
+
+
+@expects(Credential)
+@jsonify
+def authenticate_microservice(req: HttpRequest, res: ResponseWriter, ctx):
+    def unauthorized():
+        res.status = HTTPStatus.UNAUTHORIZED
+        res.body = {'error': 'could not authenticate microservice'}
+
+    db: Connection = req.app.peek(DB)
+    credential: Credential = ctx.credential
+
+    table = 'credentials'
+    username_field = 'username'
+    password_field = 'password'
+    if credential.scheme == 'token':
+        table = 'microservices'
+        username_field = 'microservice'
+        password_field = 'passkey'
+
+    try:
+        cursor: Cursor = db.cursor()
+        row = cursor.execute(f'''
+            SELECT {username_field}, {password_field} FROM {table}
+                WHERE {username_field} = ?
+        ''', (credential.username,))
+    except Exception as exc:
+        return unauthorized()
+    else: data = row.fetchone()
+    finally: cursor.close()
+
+    if not data: return unauthorized()
+
+    username, password = data
+    if password != credential.password: return unauthorized()
+    # no feedback if provided if secret key mismatches i.e. continue indicates just that
+
+    token = tokenize({
+        'scheme': credential.scheme,
+        'username': username,
+    }, req.app.CONFIG(SECRET_KEY))
+    res.headers = 'Set-Cookie', f'Authorization={token}; Path=/; HttpOnly; Max-Age={60*10}; SameSite=Strict; Secure'
+    res.status = HTTPStatus.ACCEPTED
+    res.body = None
 
 
 @jsonify
@@ -85,20 +131,20 @@ def list_gists(req, res, ctx):
 
 
 @jsonify
-def list_events(req, res, ctx):
+def list_actions(req, res, ctx):
     db: Connection = req.app.peek(DB)
     page, pagination = get_pagination(req)
-    params = ['id', 'event', 'microservice', 'schemata', 'timeline']
-    _id, _event, _microservice, _schemata, _timeline = [req.params.get(p) for p in params]
+    params = ['id', 'action', 'microservice', 'schemata', 'timeline']
+    _id, _action, _microservice, _schemata, _timeline = [req.params.get(p) for p in params]
 
     steps = Steps()
     sqls = f'''
         SELECT
-            rowid, event, microservice, schemata, timestamped
+            rowid, action, microservice, schemata, timestamped
         FROM
-            events
+            actions
             {steps.EQUALS(_id, 'rowid')}
-            {steps.LIKE(_event, 'event')}
+            {steps.LIKE(_action, 'action')}
             {steps.LIKE(_microservice, 'microservice')}
             {steps.LIKE(_schemata, 'schemata')}
             {get_timeline(_timeline, steps)}
@@ -118,32 +164,32 @@ def list_events(req, res, ctx):
     res.status = HTTPStatus.OK
     res.body = [{
         'id': id,
-        'event': event,
+        'action': action,
         'microservice': microservice,
         'schemata': loads(schemata),
         'timestamped': timestamped
-    } for id, event, microservice, schemata, timestamped in rows]
+    } for id, action, microservice, schemata, timestamped in rows]
 
 
 @jsonify
-def list_actions(req: HttpRequest, res: ResponseWriter, ctx):
+def list_events(req: HttpRequest, res: ResponseWriter, ctx):
     db: Connection = req.app.peek(DB)
     page, pagination = get_pagination(req)
 
-    params = ['id', 'event', 'deduper', 'payload', 'timeline']
-    _id, _event,  _deduper, _payload, _timeline = [req.params.get(p) for p in params]
+    params = ['id', 'action', 'deduper', 'payload', 'timeline']
+    _id, _action,  _deduper, _payload, _timeline = [req.params.get(p) for p in params]
 
     steps = Steps()
     sqls = f'''SELECT
-            action, event, payload, deduper, timestamped, COUNT(*) AS results
-        FROM actions
-            {steps.EQUALS(_id, 'action')}
-            {steps.LIKE(_event, 'event')}
+            event, action, payload, deduper, timestamped, COUNT(*) AS results
+        FROM events
+            {steps.EQUALS(_id, 'event')}
+            {steps.LIKE(_action, 'action')}
             {steps.EQUALS(_deduper, 'deduper')}
             {steps.LIKE(_payload, 'payload')}
             {get_timeline(_timeline, steps)}
         GROUP BY
-            action, event, payload, deduper, timestamped
+            event, action, payload, deduper, timestamped
         LIMIT {pagination if pagination < MAX_PAGINATION else MAX_PAGINATION}
         OFFSET {(page - 1) * pagination};
     '''
@@ -159,12 +205,12 @@ def list_actions(req: HttpRequest, res: ResponseWriter, ctx):
 
     res.status = HTTPStatus.OK
     res.body = [{
-        'action': action,
         'event': event,
+        'action': action,
         'payload': loads(payload),
         'deduper': deduper,
         'timestamped': timestamped
-    } for action, event, payload, deduper, timestamped, results in rows]
+    } for event, action, payload, deduper, timestamped, results in rows]
 
 
 @jsonify
@@ -249,20 +295,20 @@ def list_subscribers(req: HttpRequest, res, ctx):
     } for subscriber, event, microservice, endpoint, description, timestamped in rows]
 
 
-@expects(Action)
+@expects(Event)
 @jsonify
-def register_action(req: HttpRequest, res: ResponseWriter, ctx: Context):
+def register_event(req: HttpRequest, res: ResponseWriter, ctx: Context):
     db: Connection = req.app.peek(DB)
-    action: Event = ctx.action
+    event: Event = ctx.event
 
-    table = 'actions'
-    fields = ('event', 'payload', 'deduper', 'timestamped',)
+    table = 'events'
+    fields = ('action', 'payload', 'deduper', 'timestamped',)
 
     try:
         cursor = db.cursor()
         row = cursor.execute('''
-            SELECT schemata FROM events WHERE event = ?
-        ''', (action.event,)).fetchone()
+            SELECT schemata FROM actions WHERE action = ?
+        ''', (event.action,)).fetchone()
 
         if not row:
             res.status = HTTPStatus.BAD_REQUEST
@@ -271,12 +317,12 @@ def register_action(req: HttpRequest, res: ResponseWriter, ctx: Context):
 
         schemata = loads(row[0])
         validate(
-            instance=action.payload,
+            instance=event.payload,
             schema=schemata, format_checker=draft7_format_checker)
-        values = (action.event,
-            dumps(action.payload), action.deduper, action.timestamped)
+        values = (event.action,
+            dumps(event.payload), event.deduper, event.timestamped)
 
-        actionid = cursor.execute(f'''
+        eventid = cursor.execute(f'''
             INSERT INTO
                 {table} ({', '.join(fields)})
             VALUES(?, ?, ?, ?) RETURNING rowid;
@@ -284,16 +330,16 @@ def register_action(req: HttpRequest, res: ResponseWriter, ctx: Context):
 
         cursor.execute(f'''
             INSERT INTO
-                gists(action, subscriber, completed, timestamped)
+                gists(event, subscriber, completed, timestamped)
             SELECT
-                {actionid[0]}, subscriber, 0, '{action.timestamped.isoformat()}'
-            FROM subscribers WHERE event = ?
-        ''', (action.event,));
+                {eventid[0]}, subscriber, 0, '{event.timestamped.isoformat()}'
+            FROM subscribers WHERE action = ?
+        ''', (event.action,));
 
         db.commit()
     except ValidationError:
         res.status = HTTPStatus.NOT_ACCEPTABLE
-        res.body = {'error': 'payload does not conform to event schema'}
+        res.body = {'error': 'payload does not conform to action schema'}
         return
     except Exception as exc:
         res.status = HTTPStatus.UPGRADE_REQUIRED
@@ -304,26 +350,32 @@ def register_action(req: HttpRequest, res: ResponseWriter, ctx: Context):
 
     res.status = HTTPStatus.CREATED
     res.body = {
-        'action': actionid[0],
-        'event': action.event,
-        'payload': action.payload,
-        'deduper': action.deduper,
-        'timestamped': action.timestamped
+        'event': eventid[0],
+        'action': event.action,
+        'payload': event.payload,
+        'deduper': event.deduper,
+        'timestamped': event.timestamped
     }
 
 
-@expects(Event)
+@expects(Action)
 @jsonify
-def register_event(req: HttpRequest, res: ResponseWriter, ctx: Context):
+def register_action(req: HttpRequest, res: ResponseWriter, ctx: Context):
     db: Connection = req.app.peek(DB)
-    event: Event = ctx.event
+    action: Action = ctx.action
 
-    table = 'events'
-    fields = ('event', 'microservice', 'schemata', 'timestamped',)
-    values = (event.event, event.microservice, dumps(event.schemata), event.timestamped)
+    table = 'actions'
+    fields = ('action', 'microservice', 'schemata', 'timestamped',)
+    values = (action.action, action.microservice, dumps(action.schemata), action.timestamped)
 
     try:
         cursor: Cursor = db.cursor()
+        microservice = cursor.execute(f'''
+            select * from microservices where rowid = ?
+        ''', (action.microservice,)).fetchone()
+        if not microservice:
+            raise ValueError(f'microservice with id {action.microservice} not found')
+
         cursor.execute(f'''
             INSERT INTO {table}({', '.join(fields)}) VALUES(?, ?, ?, ?)
         ''', values)
@@ -336,7 +388,7 @@ def register_event(req: HttpRequest, res: ResponseWriter, ctx: Context):
         cursor.close()
 
     res.status = HTTPStatus.CREATED
-    res.body = event.dict()
+    res.body = action.dict()
 
 
 @expects(Microservice)
@@ -400,11 +452,11 @@ def update_microservice(req: HttpRequest, res: ResponseWriter, ctx: Context):
 @jsonify
 def register_subscriber(req: HttpRequest, res: ResponseWriter, ctx: Context):
     db: Connection = req.app.peek(DB)
-    subscriber: Event = ctx.subscriber
+    subscriber: Action = ctx.subscriber
 
     table = 'subscribers'
     fields = ('event', 'microservice', 'endpoint', 'description', 'timestamped',)
-    values = (subscriber.event, subscriber.microservice, subscriber.endpoint, subscriber.description, subscriber.timestamped)
+    values = (subscriber.action, subscriber.microservice, subscriber.endpoint, subscriber.description, subscriber.timestamped)
 
     try:
         cursor: Cursor = db.cursor()

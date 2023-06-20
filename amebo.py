@@ -53,17 +53,17 @@ async def amebo(router: Router):
             cursor: Cursor = db.cursor()
             gists = cursor.execute(f'''
                 SELECT
-                    m.location || s.endpoint AS endpoint, a.payload, m.passkey, g.rowid as gid
-                FROM gists AS g JOIN actions a ON
-                    g.action = a.action
+                    m.location || s.endpoint AS endpoint, e.payload, m.passkey, g.rowid as gid
+                FROM gists AS g JOIN events e ON
+                    g.event = e.event
                 JOIN subscribers s ON
                     s.subscriber = g.subscriber
-                JOIN events e ON
-                    a.event = e.event
+                JOIN actions a ON
+                    e.action = a.action
                 JOIN microservices m ON
                     s.microservice = m.microservice
                 WHERE g.completed <> 1
-                ORDER BY g.action LIMIT {router.CONFIG('envelope_size')};
+                ORDER BY g.event LIMIT {router.CONFIG('envelope_size')};
             ''').fetchall()
 
             if len(gists) < router.CONFIG('rest_when'): await sleep(router.CONFIG('idles'))
