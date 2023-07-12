@@ -22,5 +22,5 @@ routerling = "0.5.1"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[project.scripts]
-amebo = "router:router"
+[tool.poetry.scripts]
+amebo = "amebo.router:router"
