@@ -27,6 +27,14 @@ def get_version():
     return VERSION_RE.search(init).group(1)
 
 
+def entry_points():
+    return {
+        'console_scripts': [
+            'amebo = amebo.cli:main',
+        ]
+    }
+
+
 setup(
     name='amebo',
     version=get_version(),
@@ -56,4 +64,5 @@ setup(
         'Documentation': 'https://github.com/tersoo/amebo',
         'Source': 'https://github.com/tersoo/amebo',
     },
+    entry_points=entry_points()
 )

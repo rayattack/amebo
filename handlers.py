@@ -34,5 +34,5 @@ async def amebo_infinite_recursion_loop():
     loop = get_running_loop()
     # await amebo()
     # print('+')
-    await sleep(2)
+    await sleep(1)
     loop.create_task(amebo_infinite_recursion_loop())

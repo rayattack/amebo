@@ -76,3 +76,7 @@ async def amebo(router: Router):
             cursor.close()
 
     await traverse()
+
+
+def cli():
+    pass
