@@ -1,13 +1,21 @@
 from os import environ
 from sqlite3 import connect, Connection
 
-
 # installed libs
+from asyncpg import connect as pgconnect
 from dotenv import load_dotenv
+from redis import Redis
 from washika import Washika as Router
 
 # src code
 from scripts import initdbscript
+
+
+ENGINES = {
+    'sqlite': lambda *args: connect(*args),
+    'redis': lambda *args: Redis(*args),
+    'postgres': lambda *args: pgconnect(*args)
+}
 
 
 def administratorup(router: Router) -> str:
@@ -45,5 +53,8 @@ async def initdb(router: Router):
         print('Exception in initdb hook: ', exc)
 
 
-async def upsqlite(router: Router):
-    router.keep('db', connect(router.CONFIG('db')))
+async def upstorage(router: Router):
+    engine = router.CONFIG('db').lower()
+    connection = ENGINES.get(engine)
+    db = connection(environ.get('WASHIKA_DSN') or 'amebo.db')
+    router.keep('db', db)

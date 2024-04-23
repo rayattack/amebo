@@ -1,9 +1,10 @@
 from asyncio import get_running_loop, sleep
 from os import environ
 from uuid import uuid4
+from traceback import print_stack
 
 # installed libs
-from washika import Washika as Router
+from washika import Washika
 from routerling.constants import STARTUP, SHUTDOWN
 
 # src code
@@ -26,7 +27,7 @@ from controllers import (
 
     update_microservice,
 )
-from hooks import administratorup, downsqlite, envup, initdb, upsqlite
+from hooks import administratorup, downsqlite, envup, initdb, upstorage
 from views import (
     render_login,
     render_screen,
@@ -34,19 +35,20 @@ from views import (
 from utils import serve_public_assets
 
 
-router = Router({
-    'db': 'amebo.db',
-    'envelope_size': 256,  # how many tasks to fetch at once for processing
+router = Washika({
+    'db': environ.get('WASHIKA_STORE') or 'sqlite',
+    'envelope_size': int(environ.get('ENVELOPE_SIZE') or 256),  # how many tasks to fetch at once for processing
     'idles': 5,  # sleep for 5 seconds
     'rest_when': 0,  # reduce frequency of daemons when tasks less than 5
     SECRET_KEY: environ.get('secret_key') or str(uuid4())
 })
 
 
-async def reschedule_forever():
+async def reschedule_forever(level=0):
     loop = get_running_loop()
-    await amebo(router)
-    loop.create_task(reschedule_forever())
+    await amebo(router, level)
+    # print('Rescheduled: ', level, end='\r')
+    loop.create_task(reschedule_forever(level=level+1))
 
 
 async def amebo_sleeper(req, res, ctx):
@@ -59,7 +61,7 @@ async def enable_cors(req, res, ctx):
 
 
 router.ON(STARTUP, envup)
-router.ON(STARTUP, upsqlite)
+router.ON(STARTUP, upstorage)
 router.ON(STARTUP, initdb)
 router.ON(STARTUP, administratorup)
 router.ON(SHUTDOWN, downsqlite)

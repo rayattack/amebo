@@ -5,7 +5,12 @@ built to enable communication between applications i.e. microservices or
 modules (if you are using monoliths), and hopes to be able to serve as a small
 but capable and simpler alternative to Kafka, RabbitMQ, SQS/SNS.
 
-**STILL IN DEVELOPMENT: NOT READY FOR Production Use**
+1. Availability: Amebo runs on battle tested open source tools i.e. Redis, Postgres and provides the same level of availability guarantees
+
+1. Reliability: Amebo has been used at scale by open source projects to handle 100's of millions of request
+
+1. Latency: Amebo guarantees sub 100ms latencies at scale (barring network and hardware limitations)
+
 
 &nbsp;
 
@@ -21,17 +26,16 @@ These can be microservices or modules (in a monolith) - that create and receive 
     amebo ;-) before they can publish [_**actions**_](#3-actions).
 
 
-### 2. Events
+### 2. Action
 ---
 This is something that can happen in an [_**application**_](#1-applications) i.e. creating a customer, deleting an order. They are registered
-    on Amebo by their parent [_**application**_](#1-applications), and all events must provide a valid JSON Schema (can be empty "{}") that Amebo
-    can use to validate event actions before sending to [_**subscribers**_](#4-subscribers).
+    on Amebo by their parent [_**application**_](#1-applications), and all actions must provide a valid JSON Schema (can be empty "{}") that Amebo
+    can use to validate action events before sending to [_**subscribers**_](#4-subscribers).
 
 
-### 3. Actions
+### 3. Events
 ---
-An action is a HTTP request sent by an [_**application**_](#1-applications) to Amebo to signal it about the occurence of an event locally. Actions
-    can have a json payload that must match the JSON Schema of its parent event.
+An event is the occurence of an action and in practice is a HTTP request sent by an [_**application**_](#1-applications) to Amebo to signal it about the occurence of an action locally. Events can have a json payload that must match the JSON Schema of its parent action.
 
 ### 4. Subscribers
 ---
@@ -102,10 +106,10 @@ ambeo -w 2 -a 0.0.0.0:8701
 
 &nbsp;
 
-## 2nd : Register events that can happen in the registered microservices
+## 2nd : Register actions that can happen in the registered microservices
 ---
 
-`endpoint: /v1/events`
+`endpoint: /v1/actions`
 
 <table>
 <tr>
@@ -119,7 +123,7 @@ ambeo -w 2 -a 0.0.0.0:8701
 {
     "type": "object",
     "properties": {
-        "event": {"type": "string"},
+        "action": {"type": "string"},
         "microservice": {"type": "string"},
         "schemata": {
             "type": "object",
@@ -130,7 +134,7 @@ ambeo -w 2 -a 0.0.0.0:8701
             }
         }
     },
-    "required": ["event", "microservice", "schemata"]
+    "required": ["action", "microservice", "schemata"]
 }
 ```
 
@@ -139,7 +143,7 @@ ambeo -w 2 -a 0.0.0.0:8701
 
 ```json
 {
-    "event": "customers.v1.created",
+    "action": "customers.v1.created",
     "microservice": "customers",
     "schemata": {
         "$id": "https://your-domain/customers/customer-created-schema-example.json",
@@ -162,16 +166,16 @@ ambeo -w 2 -a 0.0.0.0:8701
 
 &nbsp;
 
-## 3rd : Tell Amebo when an event occurs i.e. create an action
+## 3rd : Tell Amebo when an action occurs i.e. create an event
 ---
 
-`endpoint: /v1/actions`
+`endpoint: /v1/events`
 
 | Key | Description |
 |---|---|
-| **event** | Identifier name of the event. (As registered in the previous step.) |
-| **deduper** | Deduplication string. used to prevent the same action from being registered twice |
-| **payload** | JSON data (must confirm to the schema registerd with the event) |
+| **action** | Identifier name of the action. (As registered in the previous step.) |
+| **deduper** | Deduplication string. used to prevent the same event from being registered twice |
+| **payload** | JSON data (must confirm to the schema registerd with the action) |
 
 &nbsp;
 
@@ -241,6 +245,10 @@ encryption if an encryption key was provided by the subscriber when registering 
 1. GUI for tracking events, actions, subscribers. Easy discovery of what events exist, what events failed and GUI retry for specific subscribers
 
 1. Gossiping is HTTP native i.e. subscribers receive http requests automatically at pre-registered endpoints
+
+1. Envelope format and transmission is web native and clearly outlined by schema registry
+
+1. Topic management is simplified as actions with versioning support baked in
 
 1. Infinite retries (stop after $MAX_RETRIES and $MAX_MINUTES coming soon)
 

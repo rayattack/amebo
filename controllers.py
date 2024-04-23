@@ -295,8 +295,8 @@ def list_subscribers(req: HttpRequest, res, ctx):
     } for subscriber, event, microservice, endpoint, description, timestamped in rows]
 
 
-@expects(Event)
 @jsonify
+@expects(Event)
 def register_event(req: HttpRequest, res: ResponseWriter, ctx: Context):
     db: Connection = req.app.peek(DB)
     event: Event = ctx.event
@@ -391,8 +391,8 @@ def register_action(req: HttpRequest, res: ResponseWriter, ctx: Context):
     res.body = action.dict()
 
 
-@expects(Microservice)
 @jsonify
+@expects(Microservice)
 def register_microservice(req: HttpRequest, res: ResponseWriter, ctx: Context):
     db: Connection = req.app.peek(DB)
     microservice: Microservice = ctx.microservice

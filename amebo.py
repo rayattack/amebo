@@ -11,7 +11,7 @@ from orjson import loads
 from washika import Washika as Router
 
 
-async def amebo(router: Router):
+async def amebo(router: Router, level=0):
     db: Connection = router.peek('db')
     accepters = []
     rejecters = []
@@ -32,7 +32,7 @@ async def amebo(router: Router):
             rejecters.append(gist_id)
         finally:
             await client.aclose()
-        
+
         try:
             cursor: Cursor = db.cursor()
             cursor.execute(f'''
@@ -76,3 +76,4 @@ async def amebo(router: Router):
             cursor.close()
 
     await traverse()
+    print('Queried: ', level, end='\r')
