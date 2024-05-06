@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "amebo"
-version = "0.2.0"
+version = "0.3.0"
 description = "HTTP Event Notifications Server - Asynchronous Communication Engine"
 authors = ["Tersoo"]
 license = "MIT"
@@ -17,10 +17,9 @@ pyjwt = "2.7.0"
 uvicorn = "0.14.0"
 routerling = "0.5.1"
 
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-amebo = "amebo.router:router"
+amebo = "amebo.cli:execute"

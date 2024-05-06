@@ -1,3 +1,2 @@
 #!/bin/bash
-
-uvicorn router:router
+uvicorn router:router $@

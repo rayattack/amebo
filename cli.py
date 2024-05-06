@@ -1,8 +1,10 @@
 from subprocess import call
+from sys import argv
 
 
 def execute():
-    call(['sh', 'amebo.sh'])
+    options = argv[1:]
+    call(['sh', 'amebo.sh', *options])
 
 
 if __name__ == '__main__':
