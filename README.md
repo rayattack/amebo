@@ -23,7 +23,7 @@ Amebo has only 4 concepts (first class objects) to understand or master.
 ### 1. Applications
 ---
 These can be microservices or modules (in a monolith) - that create and receive notifications about [_**events**_](#2-events). All applications must be registered on
-    amebo ;-) before they can publish [_**actions**_](#3-actions).
+    amebo ;-) before they can publish [_**events**_](#3-events).
 
 
 ### 2. Action

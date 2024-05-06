@@ -2,7 +2,7 @@
 TODO: change to supersql and group sqlite&pg -> sql so the final option is sql | redis
 """
 
-from constants import PG, REDIS, SQLITE
+from constants.literals import PG, REDIS, SQLITE
 
 
 def list_actions_redis():

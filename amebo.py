@@ -1,18 +1,18 @@
 from asyncio import gather, sleep
 from http import HTTPStatus
 from sqlite3 import Connection, Cursor
-from typing import List
 
 # installed libs
+from heaven import Router
 from httpx import AsyncClient
 from orjson import loads
 
 # src code
-from washika import Washika as Router
+from constants.literals import DB
 
 
-async def amebo(router: Router, level=0):
-    db: Connection = router.peek('db')
+async def amebo(router: Router):
+    db: Connection = router.peek(DB)
     accepters = []
     rejecters = []
     async def notify(endpoint: str, data: dict, passkey: str, gist_id: int):
@@ -49,6 +49,7 @@ async def amebo(router: Router, level=0):
             cursor.close()
 
     async def traverse():
+        cursor = None
         try:
             cursor: Cursor = db.cursor()
             gists = cursor.execute(f'''
@@ -73,7 +74,6 @@ async def amebo(router: Router, level=0):
         except Exception as exc:
             print('Exception occured: ', exc)
         finally:
-            cursor.close()
+            if cursor: cursor.close()
 
     await traverse()
-    print('Queried: ', level, end='\r')

@@ -116,27 +116,18 @@
         this.passkey = '';
         this.address = '';
     },
-    saveMicroservice() {
-        fetch('/v1/microservices', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                microservice: this.microservice,
-                location: this.address,
-                passkey: this.passkey
-            })
-        })
-        .then(response => {
-            if(response.status !== 201) throw Error(response.statusText)
-            return response.json()
-        })
-        .then(data => {
-            ShowFeedback('info', 'Microservice created')
+    saveMicroservice(){
+        superpost('/v1/microservices').send({
+            microservice: this.microservice,
+            address: this.address,
+            passkey: this.passkey
+        }).then(res => {
+            supertoast('info', 'Microservice created');
             this.resetForm();
             $dispatch('refresher');
             showModalContent = false;
         }).catch(err => {
-            ShowFeedback('error', err.message)
+            supertoast('error', err.response.body.error);
         })
     }
 }">

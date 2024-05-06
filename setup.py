@@ -13,7 +13,7 @@ VERSION_RE = re.compile(r'''__version__ = ['"]([0-9.]+)['"]''')
 
 
 requires = [
-    'jsonschema>=4.17.4',
+    'fastjsonschema>=2.19.1',
     'orjson>=3.8.5',
     'jinja2>=3.1.2',
     'routerling>=0.5.1',

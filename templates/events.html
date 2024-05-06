@@ -2,6 +2,8 @@
 
 {% from 'actions.axml' import pagination %}
 
+{% set modal_name = 'Events' %}
+
 
 {% macro commander() %}
 {
@@ -59,8 +61,8 @@
 
 {% block easel %}
 <section x-data="{{ controller('events') }}">
-    <div><span class="font-800 pr-3">Filters:</span></div>
-    <div class="pb-3" x-data="{{ commander() }}" x-effect="checkDirty">
+    <div><span class="font-800 px-3">Filters:</span></div>
+    <div class="p-3" x-data="{{ commander() }}" x-effect="checkDirty">
         <span class="display-inline-block">
             <input type="text" placeholder="a. id" style="width: 5em" x-model="idSearch" />
             <input type="text" placeholder="search by event name..." style="width: 20em" x-model="eventSearch">
@@ -121,6 +123,7 @@
 
 {% block wizard %}
 <span x-data="{
+    ide: null,
     actions: [],
     action: '',
     deduper: '',
@@ -141,26 +144,18 @@
         this.deduper = '';
         this.payload = '';
     },
-    publishEvent() {
-        fetch('/v1/events', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                action: this.action,
-                deduper: this.deduper,
-                payload: this.payload
-            })
-        })
-        .then(response => {
-            if(response.status !== 201) throw Error(response.statusText)
-            return response.json()
-        }).then(data => {
-            ShowFeedback('info', 'Event published successfully')
+    publishEvent(){
+        superpost('/v1/events').send({
+            action: this.action,
+            deduper: this.deduper,
+            payload: JSON.parse(this.ide.getValue())
+        }).then(res => {
+            supertoast('info', 'Event published successfully')
             this.resetForm();
             $dispatch('refresher');
             showModalContent = false;
         }).catch(err => {
-            ShowFeedback('error', err.message)
+            supertoast('error', err.response.body.error);
         })
     }
 }">
@@ -176,17 +171,22 @@
                 </select>
             </div>
         </div>
-        <div class="brick">
-            <label class="font-800 mr-2">Deduper (unique): </label>
-            <input type="text" class="w-30em" placeholder="Enter a unique deduplication key for event..." x-model="deduper">
+        <div class="brick vertical-aligns-middle">
+            <label class="font-800 mr-2 vertical-aligns-middle">Deduper (unique): </label>
+            <input type="text" class="w-30em input" placeholder="Unique deduplication key for event..." x-model="deduper">
         </div>
         <div class="brick">
             <label class="font-800 mr-2">Payload (JSON): </label>
-            <textarea class="w-30em" rows="10" x-model="payload"></textarea>
+            <div id="schemator" style="height: 30em" x-init="() => {
+                ide = ace.edit($el);
+                ide.session.setMode('ace/mode/json');
+            }" @keydown.cmd.s.prevent="() => {
+                supertoast('info', 'Click the save button below to save this action')
+            }"></div>
         </div>
     </div>
     <div class="modal-card-foot">
-        <button @click="publishEvent">publish event</button>
+        <button class="button primary" @click="publishEvent">Publish Event</button>
     </div>
 </span>
 {% endblock %}

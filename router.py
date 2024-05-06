@@ -1,41 +1,18 @@
-from asyncio import get_running_loop, sleep
 from os import environ
 from uuid import uuid4
-from traceback import print_stack
 
 # installed libs
-from washika import Washika
-from routerling.constants import STARTUP, SHUTDOWN
+from dotenv import load_dotenv
+from heaven import Application
+from heaven.constants import STARTUP, SHUTDOWN
 
 # src code
 from amebo import amebo
-from constants import SECRET_KEY
-from controllers import (
-    authenticate_microservice,
-
-    list_actions,
-    list_events,
-    list_gists,
-    list_microservices,
-    list_subscribers,
-
-    register_action,
-    register_event,
-    register_microservice,
-    register_subscriber,
-    resend_gist,
-
-    update_microservice,
-)
-from hooks import administratorup, downsqlite, envup, initdb, upstorage
-from views import (
-    render_login,
-    render_screen,
-)
-from utils import serve_public_assets
+from constants.literals import SECRET_KEY
 
 
-router = Washika({
+router = Application({
+    'env_loaded': load_dotenv(),
     'db': environ.get('WASHIKA_STORE') or 'sqlite',
     'envelope_size': int(environ.get('ENVELOPE_SIZE') or 256),  # how many tasks to fetch at once for processing
     'idles': 5,  # sleep for 5 seconds
@@ -44,63 +21,45 @@ router = Washika({
 })
 
 
-async def reschedule_forever(level=0):
-    loop = get_running_loop()
-    await amebo(router, level)
-    # print('Rescheduled: ', level, end='\r')
-    loop.create_task(reschedule_forever(level=level+1))
+# setup daemons and app engine helpers
+router.daemons = amebo
+router.ASSETS('public')
+router.TEMPLATES('templates')
 
 
-async def amebo_sleeper(req, res, ctx):
-    res.status = 202
-    await sleep(1.5)
+# set up hooks
+router.ON(STARTUP, 'middlewares.database.connect')
+router.ON(STARTUP, 'middlewares.database.cache')
+router.ON(SHUTDOWN, 'middlewares.database.disconnect')
+router.ON(STARTUP, 'middlewares.database.initialize')
+router.ON(STARTUP, 'middlewares.security.upsudo')
 
 
-async def enable_cors(req, res, ctx):
-    res.headers = 'Access-Control-Allow-Credentials', 'true'
+# hooks
+router.BEFORE('/*', 'middlewares.security.cors')
 
 
-router.ON(STARTUP, envup)
-router.ON(STARTUP, upstorage)
-router.ON(STARTUP, initdb)
-router.ON(STARTUP, administratorup)
-router.ON(SHUTDOWN, downsqlite)
+# web ui- views/pages/screens
+router.GET('/', 'controllers.app.login')
+router.GET('/p/:page', 'controllers.app.pages')
 
 
-router.BEFORE('/*', enable_cors)
+# api
+router.GET('/v1/actions', 'controllers.actions.tabulate')
+router.GET('/v1/events', 'controllers.events.tabulate')
+router.GET('/v1/microservices', 'controllers.microservices.tabulate')
+router.GET('/v1/subscribers', 'controllers.subscribers.tabulate')
+router.GET('/v1/gists', 'controllers.gists.tabulate')
+router.POST('/v1/tokens', 'controllers.microservices.authenticate')
+router.POST('/v1/actions', 'controllers.actions.insert')
+router.POST('/v1/events', 'controllers.events.insert')
+router.POST('/v1/microservices', 'controllers.microservices.insert')
+router.POST('/v1/subscribers', 'controllers.subscribers.insert')
+router.POST('/v1/gists/:id', 'controllers.gists.replay')
+router.PUT('/v1/microservices/:id', 'controllers.microservices.update')
 
-
-router.GET('/v1/actions', list_actions)
-router.GET('/v1/events', list_events)
-router.GET('/v1/microservices', list_microservices)
-router.GET('/v1/subscribers', list_subscribers)
-router.GET('/v1/gists', list_gists)
-
-
-router.POST('/v1/tokens', authenticate_microservice)
-router.POST('/v1/actions', register_action)
-router.POST('/v1/events', register_event)
-router.POST('/v1/microservices', register_microservice)
-router.POST('/v1/subscribers', register_subscriber)
-router.POST('/v1/regists/:id', resend_gist)
-
-
-router.PUT('/v1/microservices/:id', update_microservice)
-
-
-# views/pages/screens
-router.GET('/public/*', serve_public_assets)
-
-router.GET('/', render_login)
-router.GET('/actions', render_screen)
-router.GET('/events', render_screen)
-router.GET('/microservices', render_screen)
-router.GET('/subscribers', render_screen)
-router.GET('/gists', render_screen)
+# maybe add a route to clear cache of compiled schemas ?
 
 
 # comment me out in production
 # router.POST('/h1/identity-created', amebo_sleeper)
-
-
-router.daemons = reschedule_forever

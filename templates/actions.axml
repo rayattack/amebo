@@ -57,7 +57,7 @@
 
 
 {% macro pagination() %}
-<div class="is-flex justify-content-space-between" style="position: sticky; bottom: 1em;">
+<div class="is-flex justify-content-space-between p-3" style="position: sticky; bottom: 1em;">
     <section>
         <button @click="pageDown" :disabled="isFiltering">&lt;</button>
         <span class="font-size-xs font-800" x-text="isFiltering ? '...' : `Page ${page}`"></span>

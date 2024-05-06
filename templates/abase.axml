@@ -4,20 +4,23 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Amebo 1.0</title>
-    
-    <link rel="stylesheet" href="/public/bulma.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css">
+
     <link rel="stylesheet" href="/public/toastify.min.css" />
     <link rel="stylesheet" href="/public/all.css">
+    <link rel="stylesheet" href="/public/heaven.css">
 
     <script src="/public/alpine.min.js" defer></script>
     <script src="/public/toastify.js"></script>
 
     {% from 'actions.axml' import scripts %}
 </head>
-<body class="container pt-3" style="height: 100vh; overflow: hidden" x-data="{showModalContent: false}">
+<body class="bg-flowers container is-fluid py-3" style="height: 100vh; overflow: hidden" x-data="{
+    showModalContent: false
+}">
     <div class="columns is-multiline" x-data="{showingWizard: false}">
         <div class="column is-12">
-            <nav class="panel pb-6">
+            <section class="bg-almost-white panel pb-3">
                 <p class="panel-heading is-flex justify-content-space-between">
                     <button class="button is-link is-small">
                         <span class="icon">
@@ -38,7 +41,7 @@
                         'gists': 'megaphone'
                     } %}
                     {% for target in ['microservices', 'actions', 'events', 'subscribers', 'gists'] %}
-                        <a href="/{{target}}" class="{{ 'is-active font-900' if req.url[1:] == target else '' }} is-flex align-items-center">
+                        <a href="/p/{{target}}" class="{{ 'is-active font-900' if req.url[1:] == target else '' }} is-flex align-items-center">
                             <span class="icon">
                                 <img src="/public/icons/{{ icons[target] }}.svg" class="svgi svgxs"></img>
                             </span>
@@ -50,6 +53,7 @@
                     {% macro controller(target) %}
                         {
                             {{target}}: [],
+                            previewing: false,
                             pagination: 15,
                             page: 1,
                             isPaginating: false,
@@ -97,20 +101,23 @@
 
                     {% block easel %}{% endblock %}
                 </div >
-            </nav>
+            </section>
         </div>
     </div>
 
     <div class="modal" :class="showModalContent ? 'is-active' : ''">
         <div class="modal-background" @click.self="showModalContent = false"></div>
-        <div class="modal-card" style="width: 70vw; position: relative; height: 70vh;">
-            <div class="modal-card-head">
-                <div class="modal-card-title">{{ req.url[1:] }} Wizard</div>
+        <div class="modal-card" style="width: 70vw; position: relative; min-height: 70vh;">
+            <div class="bg-primary fg-primary modal-card-head py-2 px-5 border-radius-0">
+                <div class="typo head">{{ modal_name }} Wizard</div>
             </div>
             {% block wizard %}
             {% endblock %}
         </div>
     </div>
     {{ scripts() }}
+
+    {% include 'scripts.axml' %}
+    {% include 'functions.axml' %}
 </body>
 </html>
