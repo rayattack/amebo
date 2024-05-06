@@ -1,0 +1,33 @@
+{% extends 'abase.axml' %}
+
+
+{% block easel %}
+<table class="table is-striped is-fullwidth is-hoverable" x-data="{{ controller('logs') }}">
+    <thead>
+        <td>Gist</td>
+        <td>Origin</td>
+        <td>Destination</td>
+        <td>Event</td>
+        <td>Endpoint</td>
+        <td>Completed</td>
+        <td>Timestamped</td>
+        <td>Payload</td>
+    </thead>
+    <tbody x-init="fetchAll">
+        <template x-for="gist in logs">
+            <tr x-data="">
+                <td x-text="gist.gist"></td>
+                <td x-text="gist.origin"></td>
+                <td x-text="gist.destination"></td>
+                <td x-text="gist.event"></td>
+                <td>
+                    <code x-text="gist.endpoint" class="font-size-sm"></code>
+                </td>
+                <td x-text="gist.completed"></td>
+                <td x-text="gist.timestamped"></td>
+                <td x-text="truncate(gist.payload, 40)"></td>
+            </tr>
+        </template>
+    </tbody>
+</table>
+{% endblock %}
