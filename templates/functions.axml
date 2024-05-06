@@ -1,0 +1,273 @@
+{% macro apimaker() %}
+    const stationapi = `{{ req.app._configuration.CLOUD_API_HOST }}${url}`;
+{% endmacro %}
+
+<script>
+    const HINT = 'Check your connection to the server and try again';
+    const FORBIDDEN = 403;
+
+    const apimaker = (url) => {
+        return `{{ req.app._configuration.CLOUD_API_HOST }}${url}`;
+    }
+
+    const capitalize = (str) => {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    const fillAvailableHeight = (el, margin = 1) => {
+        const boundaries = el.getBoundingClientRect();
+        el.style.height = `${window.innerHeight - boundaries.top - margin}px`;
+    }
+
+    const fillRemainingParentHeight = (el, margin = 1) => {
+        const boundaries = el.getBoundingClientRect();
+        const parentBoundaries = el.parentElement.getBoundingClientRect();
+        el.style.height = `${parentBoundaries.height - (boundaries.top - parentBoundaries.top) - margin}px`;
+    }
+
+    const getAvailableHeight = (el) => {
+        const boundaries = el.getBoundingClientRect();
+        return window.innerHeight - boundaries.top;
+    }
+    
+    const autosaveNotice = (variation) => {
+        supertoast('info', `Notes are saved automatically - (no need for ${variation} + S)`);
+    }
+
+    const hyperget = (url) => {
+        return fetch(url, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'text/html',
+                'hx-request': 'true'
+            },
+            credentials: 'include'
+        }).then(res => res.text())
+    }
+
+    const hyperpost = (url) => {
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'text/html',
+                'hx-request': 'true'
+            },
+            credentials: 'include'
+        }).then(res => res.text())
+    }
+
+    hypernavigate = (from, to, extras = null) => {
+        // use htmx to replace the content of from to the content of to i.e. hypernavigate('id-of-element', '/path/to/destination')
+    }
+
+    hypernavigates = (froms, tos, extras = null) => {
+        // oob swap multiple things?
+    }
+
+    const supermonitor = (url, data, timeout = 5000) => {
+        {{ apimaker() }}
+        return superagent.get(stationapi)
+                .set('X-Form-ID', '{{ ctx.formid }}')
+                .set('Content-Type', 'application/json')
+                .set('Authorization', 'Bearer {{ req.cookies.authorization }}')
+                .then(() => {
+                    setTimeout(() => {
+                        supermonitor(url, data);
+                    }, timeout);
+                });
+    }
+
+    const superdelete = (url) => {
+        {{ apimaker() }}
+        return superagent.delete(stationapi)
+                .withCredentials()
+                .set('X-Form-ID', '{{ ctx.formid }}')
+                .set('Content-Type', 'application/json')
+                .set('Authorization', 'Bearer {{ req.cookies.authorization }}')
+    }
+
+    const superget = (url) => {
+        {{ apimaker()}}
+        return superagent.get(stationapi)
+                .set('Content-Type', 'application/json')
+                .set('Authorization', 'Bearer {{ req.cookies.authorization }}')
+    }
+
+    supergradient = () => {
+        let hexxer = '0123456789ABCDEF';
+        let supergetRandomColor = () => {
+            let color = '#';
+            for(let i = 0; i < 6; i++){
+                color += hexxer[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+        let deg = Math.floor(Math.random() * 360);
+        return `linear-gradient(${deg}deg, ${supergetRandomColor()}, ${supergetRandomColor()})`;
+    }
+
+    const superhint = (err, alternative = HINT) => {
+        const color = 'error';
+        let message = '';
+        try {
+            message = err.response.body.message;
+            if(message) return supertoast(color, message);
+            throw Error('message is empty or undefined');
+        } catch(err) {
+            return supertoast(color, alternative);
+        }
+    }
+
+    const superload = (endpoint, loader, msg = HINT) => {
+        superget(endpoint).then(res => loader(res.body.payload)).catch(err => superhint(err, msg));
+    }
+
+    superpicture = (file, setter) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = () => {
+                const elem = document.createElement('canvas');
+                const width = 100;
+                const scaleFactor = width / img.width;
+                elem.width = width;
+                elem.height = img.height * scaleFactor;
+                const ctx = elem.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, img.height * scaleFactor);
+                const data = ctx.canvas.toDataURL(img, img.mimeType, 0.5);
+                setter(data);
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+
+    const superpage = (xss) => {
+        xss();
+        superpost('/v1/security').catch(err => {
+            //reload page if not authenticated
+            if(err.status === 401) window.location.reload();
+        })
+    }
+
+    const superpost = (url) => {
+        {{ apimaker() }}
+        return superagent.post(stationapi)
+                .withCredentials()
+                .set('X-Form-ID', '{{ ctx.formid }}')
+                .set('Content-Type', 'application/json')
+                .set('Authorization', 'Bearer {{ req.cookies.authorization }}')
+    }
+
+    const superput = (url) => {
+        {{ apimaker() }}
+        return superagent.put(stationapi)
+                .withCredentials()
+                .set('X-Form-ID', '{{ ctx.formid }}')
+                .set('Content-Type', 'application/json')
+                .set('Authorization', 'Bearer {{ req.cookies.authorization }}')
+    }
+
+    const superpatch = (url) => {
+        {{ apimaker() }}
+        return superagent.patch(stationapi)
+                .withCredentials()
+                .set('X-Form-ID', '{{ ctx.formid }}')
+                .set('Content-Type', 'application/json')
+                .set('Authorization', 'Bearer {{ req.cookies.authorization }}')
+    }
+
+    const supersave = (url, data, callback = null) => {
+        {{ apimaker() }}
+        superagent.post(stationapi)
+            .withCredentials()
+            .set('X-Form-ID', '{{ ctx.formid }}')
+            .set('Content-Type', 'application/json')
+            .set('Authorization', 'Bearer {{ req.cookies.authorization }}')
+            .send(JSON.stringify(data))
+            .then(res => {
+                if(res.body.status === 'success'){
+                    supertoast('success', 'Saved...');
+                }
+                else {
+                    supertoast('error', 'Save failed');
+                }
+            }).catch(err => {
+                ERROR = err;
+                try {
+                    supertoast('error', err.response.body.payload.error || 'A problem occured');
+                } catch (error) {
+                    console.log('Reference dump: ', error);
+                    supertoast('error', 'Something went wrong');
+                }
+            });
+    }
+
+    const supersonar = (xdata) => {
+        setTimeout(() => {
+            superget('/v1/sonar').then(res => {
+                xdata.accept(res.body.payload);
+                supersonar(xdata);
+            }).catch(err => {
+                supersonar(xdata, xdata.retries());
+            });
+        }, 5000 * xdata.retries());
+    }
+
+    const superswap = (url) => {
+        let identifier = null;
+        if(url.indexOf('/') === 0) url = url.substring(1);
+        let partitions = url.split('/');
+        if(partitions.length > 2) identifier = partitions[2];
+
+        htmx.ajax('POST', `/wizards/${url}`, {
+            target: '#wiside',
+            swap: 'innerHTML',
+            headers: {'x-requested-with': identifier}
+        })
+    }
+
+    const superswitch = (url, target) => {
+        htmx.ajax('POST', `/apps${url}`, {
+            target: `#${target}`,
+            swap: 'outerHTML',
+            headers: {
+                'Hx-Push-Url': `/apps/${url}`
+            }
+        })
+    }
+
+    const supertoast = (type, text, handler, dur, closable) => {
+        const background = FeedbackColors[type];
+        const duration = dur || 5000;
+        const close = closable || false;
+        const onClick = handler || (() => {});
+
+        Toastify({text, duration, style: {background}, onClick, close}).showToast();
+    }
+
+    const superwhen = (when) => {
+        return dateFns.distanceInWordsToNow(when, {addSuffix: true})
+    }
+
+    const uploadImage = (refs, setImageData) => {
+        const file = refs.hiddenImage.files[0];
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = () => {
+                const elem = document.createElement('canvas');
+                const width = 100;
+                const scaleFactor = width / img.width;
+                elem.width = width;
+                elem.height = img.height * scaleFactor;
+                const ctx = elem.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, img.height * scaleFactor);
+                const data = ctx.canvas.toDataURL(img, img.mimeType, 0.5);
+                setImageData(data);
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+</script>
