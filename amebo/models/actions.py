@@ -9,8 +9,9 @@ from pydantic import Field, field_validator
 
 class Action(Model):
     action: str
-    microservice: str
+    producer: str
     schemata: Union[dict, str]
+    passphrase: str
     timestamped: datetime = Field(default_factory=datetime.now)
 
     @classmethod

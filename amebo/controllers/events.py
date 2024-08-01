@@ -67,7 +67,13 @@ def insert(req: Request, res: Response, ctx: Context):
     try:
         cursor = db.cursor()
         row = cursor.execute('''
-            SELECT schemata FROM actions WHERE action = ?
+            SELECT
+                schemata, producer, p.passphrase
+            FROM
+                actions
+            WHERE
+                action = ?
+            JOIN producers p ON p.name = actions.producer
         ''', (event.action,)).fetchone()
 
         if not row:

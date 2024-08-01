@@ -14,22 +14,22 @@ from amebo.utils.structs import Steps
 
 
 @jsonify
-def tabulate(req, res, ctx: Context):
+def tabulate(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     page, pagination = get_pagination(req)
-    params = ['id', 'action', 'microservice', 'schemata', 'timeline']
-    _id, _action, _microservice, _schemata, _timeline = [req.params.get(p) for p in params]
+    params = ['id', 'action', 'producer', 'schemata', 'timeline']
+    _id, _action, _producer, _schemata, _timeline = [req.queries.get(p) for p in params]
 
     steps = Steps()
     sqls = f'''
         SELECT
-            rowid, action, microservice, schemata, timestamped
+            rowid, action, producer, schemata, timestamped
         FROM
             actions
-            {steps.EQUALS(_id, 'rowid')}
-            {steps.LIKE(_action, 'action')}
-            {steps.LIKE(_microservice, 'microservice')}
-            {steps.LIKE(_schemata, 'schemata')}
+            {steps.EQUALS('rowid', _id)}
+            {steps.LIKE('action', _action)}
+            {steps.LIKE('producer', _producer)}
+            {steps.LIKE('schemata', _schemata)}
             {get_timeline(_timeline, steps)}
         LIMIT {pagination if pagination < MAX_PAGINATION else MAX_PAGINATION}
         OFFSET {(page - 1) * pagination};
@@ -48,10 +48,10 @@ def tabulate(req, res, ctx: Context):
     res.body = [{
         'id': id,
         'action': action,
-        'microservice': microservice,
+        'producer': producer,
         'schemata': loads(schemata),
         'timestamped': timestamped
-    } for id, action, microservice, schemata, timestamped in rows]
+    } for id, action, producer, schemata, timestamped in rows]
 
 
 @jsonify
@@ -61,16 +61,19 @@ def insert(req: Request, res: Response, ctx: Context):
     action: Action = ctx.action
 
     table = 'actions'
-    fields = ('action', 'microservice', 'schemata', 'timestamped',)
-    values = (action.action, action.microservice, dumps(action.schemata), action.timestamped)
+    fields = ('action', 'producer', 'schemata', 'timestamped',)
+    values = (action.action, action.producer, dumps(action.schemata), action.timestamped)
 
     try:
         cursor: Cursor = db.cursor()
-        microservice = cursor.execute(f'''
-            select * from microservices where rowid = ?
-        ''', (action.microservice,)).fetchone()
-        if not microservice:
-            raise ValueError(f'microservice with id {action.microservice} not found')
+        producer = cursor.execute(f'''
+            select name, passphrase from producers where name = ?
+        ''', (action.producer,)).fetchone()
+        if not producer:
+            raise ValueError(f'producer {action.producer} not found')
+        name, passphrase = producer
+        if(passphrase != action.passphrase):
+            return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'Incorrect {name} passphrase detected'})
 
         cursor.execute(f'''
             INSERT INTO {table}({', '.join(fields)}) VALUES(?, ?, ?, ?)
@@ -84,4 +87,4 @@ def insert(req: Request, res: Response, ctx: Context):
         cursor.close()
 
     res.status = HTTPStatus.CREATED
-    res.body = action.dict()
+    res.body = action.model_dump()

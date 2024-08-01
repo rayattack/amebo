@@ -8,6 +8,7 @@ html { font-family: 'Inria Sans'; }
 .cursor-pointer { cursor: pointer; }
 .display-flex { display: flex; }
 .display-flex.space-between { justify-content: space-between; }
+.display-inline-block { display: inline-block !important; }
 .button + .display-field { border-top: 1px dotted #333; }
 .display-field { border-bottom: 1px dotted #333; }
 .fg-primary { color: #fff; }
@@ -17,6 +18,7 @@ html { font-family: 'Inria Sans'; }
 .button { border-radius: 0; padding: .75em 2em; font-weight: 400; }
 .button.primary { background-color: #111; color: #fff; }
 .input { border-color: #333; border-radius: 0px; outline: none !important; box-shadow: none !important; }
+textarea.text { border-color: #333; border-radius: 0px; outline: none !important; padding: .5em; }
 .select select { border-radius: 0px; border-color: #333; box-shadow: none !important; }
 
 
@@ -26,6 +28,10 @@ html { font-family: 'Inria Sans'; }
 .font-600 { font-weight: 600; }
 .font-700 { font-weight: 700; }
 .font-800 { font-weight: 800; }
+
+
+.pointer-events-all { pointer-events: all !important; }
+
 
 .typo.paragraph { font-size: 1.1em; }
 .typo.head { font-size: 1.4em !important; font-weight: 700; }

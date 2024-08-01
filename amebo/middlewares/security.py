@@ -12,6 +12,6 @@ def upsudo(app: Application) -> str:
     username = environ.get('ADMINISTRATOR_USERNAME')
     password = environ.get('ADMINISTRATOR_PASSWORD')
 
-    # credentials table dropped every time so this is possible, what of microservice credentials created after app start?
+    # credentials table dropped every time so this is possible, what of producer credentials created after app start?
     try: db.execute(f'INSERT INTO credentials VALUES(?, ?);', (username, password))
     except: pass

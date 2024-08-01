@@ -128,6 +128,7 @@
     action: '',
     deduper: '',
     payload: '',
+    passphrase: '',
     fetchActions(){
         fetch('/v1/actions', {
             method: 'GET'
@@ -140,6 +141,7 @@
         })
     },
     resetForm(){
+        this.passphrase = '';
         this.action = '';
         this.deduper = '';
         this.payload = '';
@@ -148,6 +150,7 @@
         superpost('/v1/events').send({
             action: this.action,
             deduper: this.deduper,
+            passphrase: this.passphrase,
             payload: JSON.parse(this.ide.getValue())
         }).then(res => {
             supertoast('info', 'Event published successfully')
@@ -174,6 +177,15 @@
         <div class="brick vertical-aligns-middle">
             <label class="font-800 mr-2 vertical-aligns-middle">Deduper (unique): </label>
             <input type="text" class="w-30em input" placeholder="Unique deduplication key for event..." x-model="deduper">
+        </div>
+        <div class="brick vertical-aligns-middle">
+            <label class="font-800 mr-2">Passphrase: </label>
+            <div class="control display-inline-block has-icons-right" x-data="{visible: false}">
+                <input :type="visible ? 'text' : 'password'" class="w-30em input" placeholder="Enter passphrase to publish event..." x-model="passphrase">
+                <span class="icon is-right" @click="visible = !visible">
+                    <img :src="`/public/icons/${visible ? 'eye' : 'neye'}.svg`" class="pointer-events-all"></img>
+                </span>
+            </div>
         </div>
         <div class="brick">
             <label class="font-800 mr-2">Payload (JSON): </label>

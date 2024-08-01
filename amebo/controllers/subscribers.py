@@ -15,19 +15,19 @@ from amebo.utils.structs import Steps
 def tabulate(req: Request, res, ctx: Context):
     db: Connection = req.app.peek(DB)
     page, pagination = get_pagination(req)
-    params = ['id', 'microservice', 'matchrule', 'event', 'endpoint', 'description', 'timeline']
+    params = ['id', 'producer', 'matchrule', 'event', 'endpoint', 'description', 'timeline']
     [
-        _id, _microservice, _matchrule,
+        _id, _producer, _matchrule,
         _event, _endpoint, _description, _timeline] = [req.params.get(p) for p in params]
     
-    m = 'microservice'
+    m = 'producer'
     steps = Steps()
     sqls = f'''
         SELECT
-            subscriber, event, microservice, endpoint, description, timestamped
+            subscriber, event, producer, endpoint, description, timestamped
         FROM subscribers
             {steps.EQUALS(_id, 'subscriber')}
-            {steps.LIKE(_microservice, m)}
+            {steps.LIKE(_producer, m)}
             {steps.LIKE(_event, 'event')}
             {steps.LIKE(_endpoint, 'endpoint')}
             {steps.LIKE(_description, 'description')}
@@ -49,11 +49,11 @@ def tabulate(req: Request, res, ctx: Context):
     res.body = [{
         'subscriber': subscriber,
         'event': event,
-        'microservice': microservice,
+        'producer': producer,
         'endpoint': endpoint,
         'description': description,
         'timestamped': timestamped
-    } for subscriber, event, microservice, endpoint, description, timestamped in rows]
+    } for subscriber, event, producer, endpoint, description, timestamped in rows]
 
 
 @jsonify
@@ -63,8 +63,8 @@ def insert(req: Request, res: Response, ctx: Context):
     subscriber: Actions = ctx.subscriber
 
     table = 'subscribers'
-    fields = ('event', 'microservice', 'endpoint', 'description', 'timestamped',)
-    values = (subscriber.action, subscriber.microservice, subscriber.endpoint, subscriber.description, subscriber.timestamped)
+    fields = ('event', 'producer', 'endpoint', 'description', 'timestamped',)
+    values = (subscriber.action, subscriber.producer, subscriber.endpoint, subscriber.description, subscriber.timestamped)
 
     try:
         cursor: Cursor = db.cursor()

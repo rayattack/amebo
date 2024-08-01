@@ -55,3 +55,4 @@ thead, tfoot, tbody tr { display: table; width: 100%; table-layout: fixed; }
 
 .w-20em { width: 20em; }
 .w-30em { width: 30em; }
+.mw-40em { min-width: 40em; }

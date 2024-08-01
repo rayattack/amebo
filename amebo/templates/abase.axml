@@ -34,13 +34,13 @@
                 </p>
                 <p class="panel-tabs">
                     {% set icons = {
-                        'microservices': 'hardware-chip',
+                        'producers': 'hardware-chip',
                         'actions': 'bulb',
                         'events': 'flash-outline',
                         'subscribers': 'ear',
                         'gists': 'megaphone'
                     } %}
-                    {% for target in ['microservices', 'actions', 'events', 'subscribers', 'gists'] %}
+                    {% for target in ['producers', 'actions', 'events', 'subscribers', 'gists'] %}
                         <a href="/p/{{target}}" class="{{ 'is-active font-900' if req.url[1:] == target else '' }} is-flex align-items-center">
                             <span class="icon">
                                 <img src="/public/icons/{{ icons[target] }}.svg" class="svgi svgxs"></img>

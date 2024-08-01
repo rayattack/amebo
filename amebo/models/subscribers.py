@@ -12,7 +12,7 @@ from amebo.models.actions import Action
 class Subscriber(Model):
     subscriber: Optional[int]
     action: str
-    microservice: str
+    producer: str
     endpoint: str
     description: str
     timestamped: datetime = Field(default_factory=datetime.now)

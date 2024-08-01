@@ -22,7 +22,7 @@
                     password: 'password',
                     scheme: 'password',
                     doLogin(){
-                        fetch('/v1/tokens', {
+                        fetch('/v8/tokens', {
                             method: 'POST',
                             credentials: 'include',
                             headers: {
@@ -57,26 +57,26 @@
                 <div class="tabs" x-effect="doReset(scheme)">
                     <ul>
                         <li :class="scheme === 'password' ? 'is-active': ''" @click="scheme = 'password'"><a>Administrator</a></li>
-                        <li :class="scheme === 'token' ? 'is-active': ''" @click="scheme = 'token'"><a>Microservice Token</a></li>
+                        <li :class="scheme === 'token' ? 'is-active': ''" @click="scheme = 'token'"><a>Producer Token</a></li>
                     </ul>
                 </div>
                 <template x-if="scheme == 'token'">
                     <div>
                         <div class="field">
-                            <label for="" class="label">Microservice</label>
+                            <label for="" class="label">Producer</label>
                             <div class="control">
-                                <input type="text" x-model="username" class="input" placeholder="Microservice Name/ID">
+                                <input type="text" x-model="username" class="input" placeholder="Producer Name/ID">
                             </div>
                         </div>
                         <div class="field">
                             <label for="" class="label">Secret</label>
                             <div class="control">
                                 <textarea class="textarea" x-model="password"
-                                    placeholder="Paste microservice secret key here..."
+                                    placeholder="Paste producer secret key here..."
                                     rows="7"></textarea>
                             </div>
                         </div>
-                        <button class="button is-info is-large is-fullwidth mt-6" @click="doLogin">Login As Microservice</button>
+                        <button class="button is-info is-large is-fullwidth mt-6" @click="doLogin">Login As Producer</button>
                     </div>
                 </template>
                 <template x-if="scheme == 'password'">

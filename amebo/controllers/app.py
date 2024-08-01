@@ -3,7 +3,7 @@ from heaven import Context, Request, Response
 
 async def pages(req: Request, res: Response, ctx: Context):
     page = req.params.get('page')
-    if page not in ['actions', 'events', 'subscribers', 'microservices', 'gists']:
+    if page not in ['actions', 'events', 'subscribers', 'producers', 'gists']:
         page = '404'
     return await res.render(f'{page}.html', req=req)
 

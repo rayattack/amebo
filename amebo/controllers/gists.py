@@ -6,14 +6,14 @@ from httpx import AsyncClient
 from orjson import loads
 
 from amebo.decorators.formatters import jsonify
-from amebo.decorators.security import authenticated
+from amebo.decorators.security import protected
 from amebo.constants.literals import DB, MAX_PAGINATION
 from amebo.utils.helpers import get_pagination, get_timeline
 from amebo.utils.structs import Steps
 
 
 @jsonify
-@authenticated
+@protected
 def tabulate(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     page, pagination = get_pagination(req)
@@ -26,7 +26,7 @@ def tabulate(req: Request, res: Response, ctx: Context):
     steps = Steps()
     sqls = f'''
         SELECT
-            g.rowid as gist, e.microservice as origin, a.event,
+            g.rowid as gist, e.producer as origin, a.event,
             case when
                 g.completed <> 0
             then
@@ -35,20 +35,20 @@ def tabulate(req: Request, res: Response, ctx: Context):
                 'False'
             end as
                 completed,
-            g.timestamped, a.payload, m.microservice as destination
+            g.timestamped, a.payload, p.name as destination
         FROM gists AS g JOIN actions a ON
             g.action = a.action
         JOIN subscribers s ON
             s.subscriber = g.subscriber
         JOIN events e ON
             a.event = e.event
-        JOIN microservices m ON
-            s.microservice = m.microservice
+        JOIN producers p ON
+            s.producer = p.name
         {steps.EQUALS(_gist, 'g.rowid')}
-        {steps.LIKE(_origin, 'e.microservice')}
+        {steps.LIKE(_origin, 'e.producer')}
         {steps.EQUALS(completed, 'g.completed')}
         {steps.LIKE(_event, 'a.event')}
-        {steps.LIKE(_destination, 'm.microservice')}
+        {steps.LIKE(_destination, 'p.name')}
         {get_timeline(_timeline, steps, column='g.timestamped')}
         ORDER BY g.rowid 
         LIMIT {pagination if pagination < MAX_PAGINATION else MAX_PAGINATION}
@@ -85,15 +85,15 @@ async def replay(req: Request, res: Response, ctx: Context):
         cursor = db.cursor()
         gist = cursor.execute(f'''
             SELECT
-                m.location || s.endpoint AS endpoint, a.payload, m.passkey, g.rowid as gid
+                m.location || s.endpoint AS endpoint, a.payload, m.passphrase, g.rowid as gid
             FROM gists AS g JOIN actions a ON
                 g.action = a.action
             JOIN subscribers s ON
                 s.subscriber = g.subscriber
             JOIN events e ON
                 a.event = e.event
-            JOIN microservices m ON
-                s.microservice = m.microservice
+            JOIN producers p ON
+                s.producer = p.name
             WHERE g.rowid = ?;
         ''', (id,)).fetchone()
     except Exception as exc:
@@ -111,8 +111,8 @@ async def replay(req: Request, res: Response, ctx: Context):
     try:
         sender = AsyncClient()
 
-        endpoint, payload, passkey, gid = gist
-        headers = {'Content-Type': 'application/json', 'X-Secret-Key': passkey}
+        endpoint, payload, passphrase, gid = gist
+        headers = {'content-type': 'application/json', 'x-pass-phrase': passphrase}
 
         response = await sender.post(endpoint, json=loads(payload), headers=headers)
         if response.status_code not in [HTTPStatus.ACCEPTED, HTTPStatus.OK]:

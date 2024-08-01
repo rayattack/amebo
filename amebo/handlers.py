@@ -18,11 +18,11 @@ async def amebo(db: Connection):
         if row:
             _, action, payload, _ = row
             for result in rows:
-                subscribers = cursor.execute(f'SELECT application, endpoint, passkey FROM subscribers WHERE action = {result.action}')
+                subscribers = cursor.execute(f'SELECT application, endpoint, passphrase FROM subscribers WHERE action = {result.action}')
                 for subscriber in subscribers:
-                    application, endpoint, passkey = subscriber
+                    application, endpoint, passphrase = subscriber
                     async with AsyncClient() as ahttp:
-                        res = await ahttp.post(endpoint, data=payload, headers={'Authorization': f'bearer {passkey}'})
+                        res = await ahttp.post(endpoint, data=payload, headers={'Authorization': f'bearer {passphrase}'})
                     if res.status_code != HTTPStatus.ACCEPTED:
                         cursor.execute(f'INSERT INTO subscribers')
     except Exception as exc:

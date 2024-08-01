@@ -15,10 +15,10 @@ async def aproko(router: Router):
     db: Connection = router.peek(DB)
     accepters = []
     rejecters = []
-    async def notify(endpoint: str, data: dict, passkey: str, gist_id: int):
+    async def notify(endpoint: str, data: dict, passphrase: str, gist_id: int):
         headers = {
             'Content-Type': 'application/json',
-            'X-Secret-Key': passkey
+            'X-PASS-Phrase': passphrase
         }
 
         try:
@@ -54,21 +54,21 @@ async def aproko(router: Router):
             cursor: Cursor = db.cursor()
             gists = cursor.execute(f'''
                 SELECT
-                    m.location || s.endpoint AS endpoint, e.payload, m.passkey, g.rowid as gid
+                    p.location || s.handler AS endpoint, e.payload, p.passphrase, g.rowid as gid
                 FROM gists AS g JOIN events e ON
                     g.event = e.event
                 JOIN subscribers s ON
-                    s.subscriber = g.subscriber
+                    s.subscription = g.subscription
                 JOIN actions a ON
                     e.action = a.action
-                JOIN microservices m ON
-                    s.microservice = m.microservice
+                JOIN producers p ON
+                    s.producer = p.name
                 WHERE g.completed <> 1
                 ORDER BY g.event LIMIT {router.CONFIG('envelope_size')};
             ''').fetchall()
 
             if len(gists) < router.CONFIG('rest_when'): await sleep(router.CONFIG('idles'))
-            await gather(*[notify(endpoint, loads(payload), passkey, gid) for endpoint, payload, passkey, gid in gists])
+            await gather(*[notify(endpoint, loads(payload), passphrase, gid) for endpoint, payload, passphrase, gid in gists])
 
             db.commit()
         except Exception as exc:

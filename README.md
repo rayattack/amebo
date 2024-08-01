@@ -2,7 +2,7 @@
 
 Amebo is the simplest pubsub server to use, deploy, understand or maintain. It was
 built to enable communication between applications i.e. microservices or
-modules (if you are using monoliths), and hopes to be able to serve as a small
+modules (if you are using monoliths) collectively called **producers**, and hopes to be able to serve as a small
 but capable and simpler alternative to Kafka, RabbitMQ, SQS/SNS.
 
 1. Availability: Amebo runs on battle tested open source tools i.e. Redis, Postgres and provides the same level of availability guarantees
@@ -20,7 +20,7 @@ Amebo has only 4 concepts (first class objects) to understand or master.
 
 &nbsp;
 
-### 1. Applications
+### 1. Producers
 ---
 These can be microservices or modules (in a monolith) - that create and receive notifications about [_**events**_](#2-events). All applications must be registered on
     amebo ;-) before they can publish [_**events**_](#3-events).
@@ -62,10 +62,10 @@ ambeo -w 2 -a 0.0.0.0:8701
 
 &nbsp;
 
-## 1st : Tell Amebo about all your microservices or applications
+## 1st : Tell Amebo about all your event producers
 ---
 
-`endpoint: /v1/microservices`
+`endpoint: /v1/producers`
 
 <table>
 <tr>
@@ -81,10 +81,10 @@ ambeo -w 2 -a 0.0.0.0:8701
     "type": "object",
     "properties": {
         "microservice": {"type": "string"},
-        "passkey": {"type": "string", "format": "ipv4 | ipv6 | hostname | idn-hostname"},
-        "location": {"type": "web"}
+        "passphrase": {"type": "string"},
+        "location": {"type": "web", "format": "ipv4 | ipv6 | hostname | idn-hostname"}
     },
-    "required": ["microservice", "passkey", "location"]
+    "required": ["microservice", "passphrase", "location"]
 }
 ```
 
@@ -94,7 +94,7 @@ ambeo -w 2 -a 0.0.0.0:8701
 ```json
 {
     "microservice": "customers",
-    "passkey": "some-super-duper-secret-of-the-module-or-microservice",
+    "passphrase": "some-super-duper-secret-of-the-module-or-microservice",
     "location": "http://0.0.0.0:3300"
 }
 ```
@@ -106,7 +106,7 @@ ambeo -w 2 -a 0.0.0.0:8701
 
 &nbsp;
 
-## 2nd : Register actions that can happen in the registered microservices
+## 2nd : Register actions that can happen in the registered producers
 ---
 
 `endpoint: /v1/actions`
@@ -199,7 +199,7 @@ ambeo -w 2 -a 0.0.0.0:8701
         },
         "location": {"type": "web"}
     },
-    "required": ["microservice", "passkey", "location"]
+    "required": ["microservice", "passphrase", "location"]
 }
 ```
 
@@ -220,7 +220,7 @@ ambeo -w 2 -a 0.0.0.0:8701
             "schemata": {"type": "string", "format": "ipv4 | ipv6 | hostname | idn-hostname"},
             "location": {"type": "web"}
         },
-        "required": ["microservice", "passkey", "location"]
+        "required": ["microservice", "passphrase", "location"]
     },
     "location": "http://0.0.0.0:3300"
 }

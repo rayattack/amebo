@@ -9,6 +9,7 @@ from pydantic import Field, field_validator
 
 class Events(Model):
     action: str = Field(...)
+    passphrase: str
     event: Optional[int] = None
     deduper: str
     payload: Union[str, dict]

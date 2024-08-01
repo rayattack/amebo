@@ -8,16 +8,17 @@ from heaven.constants import STARTUP, SHUTDOWN
 
 # src code
 from amebo.aproko import aproko
-from amebo.constants.literals import SECRET_KEY
+from amebo.constants.literals import AMEBO_SECRET_KEY
+from amebo.utils.helpers import deterministic_uuid
 
 
 router = Application({
     'env_loaded': load_dotenv(),
-    'db': environ.get('WASHIKA_STORE') or 'sqlite',
+    'db': environ.get('AMEBO_DATABASE') or 'sqlite',
     'envelope_size': int(environ.get('ENVELOPE_SIZE') or 256),  # how many tasks to fetch at once for processing
     'idles': 5,  # sleep for 5 seconds
     'rest_when': 0,  # reduce frequency of daemons when tasks less than 5
-    SECRET_KEY: environ.get('secret_key') or str(uuid4())
+    AMEBO_SECRET_KEY: environ.get('AMEBO_SECRET_KEY') or deterministic_uuid()
 })
 
 
@@ -37,6 +38,12 @@ router.ON(STARTUP, 'amebo.middlewares.security.upsudo')
 
 # hooks
 router.BEFORE('/*', 'amebo.middlewares.security.cors')
+router.BEFORE('/x/*', 'amebo.decorators.security.authenticate')
+router.BEFORE('/x1/*', 'amebo.decorators.security.authorization')
+
+
+# authenticate first
+router.POST('/v8/tokens', 'amebo.controllers.producers.authenticate')
 
 
 # web ui- views/pages/screens
@@ -47,16 +54,16 @@ router.GET('/p/:page', 'amebo.controllers.app.pages')
 # api
 router.GET('/v1/actions', 'amebo.controllers.actions.tabulate')
 router.GET('/v1/events', 'amebo.controllers.events.tabulate')
-router.GET('/v1/microservices', 'amebo.controllers.microservices.tabulate')
+router.GET('/v1/producers', 'amebo.controllers.producers.tabulate')
 router.GET('/v1/subscribers', 'amebo.controllers.subscribers.tabulate')
 router.GET('/v1/gists', 'amebo.controllers.gists.tabulate')
-router.POST('/v1/tokens', 'amebo.controllers.microservices.authenticate')
+router.POST('/v1/tokens', 'amebo.controllers.producers.authenticate')
 router.POST('/v1/actions', 'amebo.controllers.actions.insert')
 router.POST('/v1/events', 'amebo.controllers.events.insert')
-router.POST('/v1/microservices', 'amebo.controllers.microservices.insert')
+router.POST('/v1/producers', 'amebo.controllers.producers.insert')
 router.POST('/v1/subscribers', 'amebo.controllers.subscribers.insert')
 router.POST('/v1/gists/:id', 'amebo.controllers.gists.replay')
-router.PUT('/v1/microservices/:id', 'amebo.controllers.microservices.update')
+router.PUT('/v1/producers/:id', 'amebo.controllers.producers.update')
 
 # maybe add a route to clear cache of compiled schemas ?
 

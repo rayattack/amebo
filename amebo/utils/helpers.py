@@ -1,9 +1,13 @@
 from datetime import datetime, timedelta
+from uuid import UUID, uuid5, getnode
 
 from jwt import decode, encode
 from heaven import Request
 
 from amebo.constants.literals import DEFAULT_PAGINATION
+
+
+HS256 = 'HS256'
 
 
 def get_pagination(req: Request):
@@ -38,8 +42,13 @@ def get_timeline(timeline, step_or_filter, column: str = None):
 
 
 def tokenize(data, sk):
-    return encode(data, sk)
+    return encode(data, sk, algorithm=HS256)
 
 
 def untokenize(token, sk):
-    pass
+    return decode(token, sk, algorithms=[HS256])
+
+
+def deterministic_uuid():
+    null = UUID("00000000-0000-0000-0000-000000000000")
+    return uuid5(null, name = str(getnode())).hex

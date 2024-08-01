@@ -9,7 +9,7 @@
 
     idSearch: '',
     eventSearch: '',
-    microserviceSearch: '',
+    producerSearch: '',
     endpointSearch: '',
     descriptionSearch: '',
     whenFilter: '',
@@ -18,7 +18,7 @@
         let base = `/v1/subscribers?pagination=${100}&page=${page}`
         if(this.idSearch) base = `${base}&id=${this.idSearch}`
         if(this.eventSearch) base = `${base}&event=${this.eventSearch}`
-        if(this.microserviceSearch) base = `${base}&microservice=${this.microserviceSearch}`
+        if(this.producerSearch) base = `${base}&producer=${this.producerSearch}`
         if(this.endpointSearch) base = `${base}&endpoint=${this.endpointSearch}`
         if(this.descriptionSearch) base = `${base}&description=${this.descriptionSearch}`
         if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
@@ -35,7 +35,7 @@
     clearFilter(){
         this.idSearch = '';
         this.eventSearch = '';
-        this.microserviceSearch = '';
+        this.producerSearch = '';
         this.endpointSearch = '';
         this.descriptionSearch = '';
         this.whenFilter = '';
@@ -46,7 +46,7 @@
     checkDirty(){
         if(this.idSearch !== '' ||
             this.eventSearch !== '' ||
-            this.microserviceSearch !== '' ||
+            this.producerSearch !== '' ||
             this.endpointSearch !== '' || this.descriptionSearch !== '' || this.whenFilter !== '') {
             this.isFilterable = true;
             return true;
@@ -64,7 +64,7 @@
     <div class="pb-3" x-data="{{ commander() }}" x-effect="checkDirty">
         <span class="display-inline-block">
             <input type="text" placeholder="s. id" x-model="idSearch"  style="width: 5em"/>
-            <input type="text" placeholder="microservice name..." style="width: 13em" x-model="microserviceSearch">
+            <input type="text" placeholder="producer name..." style="width: 13em" x-model="producerSearch">
             <input type="text" placeholder="event name..." style="width: 15em" x-model="eventSearch">
             <input style="width: 14em" type="text" placeholder="subscriber endpoint..." x-model="endpointSearch">
             <input type="text" placeholder="subscriber description..." style="width: 18em" x-model="descriptionSearch">
@@ -90,8 +90,8 @@
         <table class="table is-striped is-fullwidth is-hoverable paginated">
             <thead>
                 <th style="width: 5%">SID</th>
-                <th>Microservice</th>
-                <th>Event</th>
+                <th>Producer</th>
+                <th>Action</th>
                 <th>Endpoint</th>
                 <th>Description</th>
                 <th>Timestamped</th>
@@ -100,8 +100,8 @@
                 <template x-for="subscriber in subscribers">
                     <tr>
                         <td x-text="subscriber.subscriber" style="width: 5%;"></td>
-                        <td x-text="subscriber.microservice"></td>
-                        <td x-text="subscriber.event"></td>
+                        <td x-text="subscriber.producer"></td>
+                        <td x-text="subscriber.action"></td>
                         <td>
                             <code x-text="subscriber.endpoint" class="font-size-sm"></code>
                         </td>
@@ -112,8 +112,8 @@
             </tbody>
             <tfoot style="position: sticky; bottom: 0">
                 <th>Subscriber</th>
-                <th>Microservice</th>
-                <th>Event</th>
+                <th>Producer</th>
+                <th>Action</th>
                 <th>Endpoint</th>
                 <th>Description</th>
                 <th>Timestamped</th>

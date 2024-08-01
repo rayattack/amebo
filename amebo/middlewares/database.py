@@ -7,6 +7,7 @@ from asyncpg import connect as pgconnect
 
 from amebo.constants.literals import DB
 from amebo.constants.scripts import initdbscript
+from amebo.utils.structs import Lookup
 
 
 ENGINES = {
@@ -40,4 +41,4 @@ async def initialize(app: Application):
 
 
 def cache(app: Application):
-    app.keep('schematas', {})
+    app._.tokens = {}
