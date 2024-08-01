@@ -1,0 +1,46 @@
+html { font-family: 'Inria Sans'; }
+
+/* appearance and display */
+.bg-almost-white { background-color: #ffffffdd; }
+.bg-flowers { background-image: url('/public/amebo.webp'); }
+.bg-primary { background-color: #111; }
+.border-radius-0 { border-radius: 0 !important; }
+.cursor-pointer { cursor: pointer; }
+.display-flex { display: flex; }
+.display-flex.space-between { justify-content: space-between; }
+.display-inline-block { display: inline-block !important; }
+.button + .display-field { border-top: 1px dotted #333; }
+.display-field { border-bottom: 1px dotted #333; }
+.fg-primary { color: #fff; }
+
+
+/* input elements and form controls */
+.button { border-radius: 0; padding: .75em 2em; font-weight: 400; }
+.button.primary { background-color: #111; color: #fff; }
+.input { border-color: #333; border-radius: 0px; outline: none !important; box-shadow: none !important; }
+textarea.text { border-color: #333; border-radius: 0px; outline: none !important; padding: .5em; }
+.select select { border-radius: 0px; border-color: #333; box-shadow: none !important; }
+
+
+/* typography */
+.font-400 { font-weight: 400; }
+.font-500 { font-weight: 500; }
+.font-600 { font-weight: 600; }
+.font-700 { font-weight: 700; }
+.font-800 { font-weight: 800; }
+
+
+.pointer-events-all { pointer-events: all !important; }
+
+
+.typo.paragraph { font-size: 1.1em; }
+.typo.head { font-size: 1.4em !important; font-weight: 700; }
+
+
+/* spacing and alignment */
+.vertical-aligns-middle > * { vertical-align: middle !important; }
+
+
+/* xtending & overriding of bulma */
+.modal-background { background-color: #27383fdb; }
+.modal-card-foot { border-radius: 0; padding: 1em 1.5em !important; }

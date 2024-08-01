@@ -1,0 +1,11 @@
+DB = 'db'
+DEFAULT_PAGINATION = 15
+
+MAX_PAGINATION = 100
+
+PG = 'pg'
+
+REDIS = 'redis'
+
+AMEBO_SECRET_KEY = 'AMEBO_SECRET_KEY'
+SQLITE = 'sqlite'

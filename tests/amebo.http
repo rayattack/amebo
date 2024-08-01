@@ -7,13 +7,13 @@
 @token = secretkeypleaseecret
 
 
-POST {{host}}/microservices {{version}}
+POST {{host}}/producers {{version}}
 Content-Type: application/json
 
 {
-    "microservice": "customers",
+    "name": "customers",
     "location": "http://locahost:8000",
-    "passkey": "secretkeypleaseecret"
+    "passphrase": "secretkeypleaseecret"
 }
 
 ###
@@ -24,7 +24,7 @@ Authorization: bearer {{token}}
 
 {
     "event": "customers.v1.products.created",
-    "microservice": "customers",
+    "producer": "customers",
     "schemata": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://example.com/product.schema.json",
@@ -62,7 +62,7 @@ Content-Type: {{appjson}}
 
 {
     "event": "customers.v1.products.created",
-    "microservice": "notifications",
+    "producer": "notifications",
     "endpoint": "/h1/customer-created",
     "description": "when customer is created handle it in orders services"
 }
@@ -73,7 +73,7 @@ Content-Type: {{appjson}}
 # GET Methods
 
 
-GET {{host}}/microservices {{version}}
+GET {{host}}/producers {{version}}
 ###
 
 GET {{host}}/events {{version}}
@@ -93,10 +93,10 @@ GET {{host}}/gists {{version}}
 
 # PUT METHODS
 
-PUT {{host}}/v1/microservices/customers
+PUT {{host}}/v1/producers/customers
 Content-Type: {{appjson}}
 
 {
     "location": "http://0.0.0.0:8000",
-    "passkey": "secretkeypleaseecret"
+    "passphrase": "secretkeypleaseecret"
 }

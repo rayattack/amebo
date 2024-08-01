@@ -1,0 +1,204 @@
+{% extends 'abase.axml' %}
+
+{% from 'actions.axml' import pagination %}
+
+{% set modal_name = 'Events' %}
+
+
+{% macro commander() %}
+{
+    isFilterable: false,
+    oldPagination: pagination,
+
+    idSearch: '',
+    eventSearch: '',
+    deduperSearch: '',
+    payloadSearch: '',
+    whenFilter: '',
+
+    filterResults(){
+        let base = `/v1/events?pagination=${100}&page=${page}`
+        if(this.idSearch) base = `${base}&id=${this.idSearch}`
+        if(this.eventSearch) base = `${base}&event=${this.eventSearch}`
+        if(this.deduperSearch) base = `${base}&deduper=${this.deduperSearch}`
+        if(this.payloadSearch) base = `${base}&payload=${this.payloadSearch}`
+        if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
+        fetch(`${base}`)
+        .then(response => response.json())
+        .then(data => {
+            isFiltering = true;
+            events = data;
+        }).catch(err => {
+            ShowFeedback('error', 'Filter operation failed...')
+        })
+    },
+
+    clearFilter(){
+        this.idSearch = '';
+        this.eventSearch = '';
+        this.deduperSearch = '';
+        this.payloadSearch = '';
+        this.whenFilter = '';
+        isFiltering = false;
+        fetchAll();
+    },
+
+    checkDirty(){
+        if(this.idSearch !== '' ||
+            this.eventSearch !== '' ||
+            this.deduperSearch !== '' ||
+            this.payloadSearch !== '' || this.whenFilter !== ''
+        ) {
+            this.isFilterable = true;
+            return true;
+        }
+        this.isFilterable = false;
+        return false;
+    }
+}
+{% endmacro %}
+
+
+{% block easel %}
+<section x-data="{{ controller('events') }}">
+    <div><span class="font-800 px-3">Filters:</span></div>
+    <div class="p-3" x-data="{{ commander() }}" x-effect="checkDirty">
+        <span class="display-inline-block">
+            <input type="text" placeholder="a. id" style="width: 5em" x-model="idSearch" />
+            <input type="text" placeholder="search by event name..." style="width: 20em" x-model="eventSearch">
+            <input type="text" placeholder="filter by deduplication code" x-model="deduperSearch">
+            <input style="width: 25em" type="text" placeholder="search in event payload..." x-model="payloadSearch">
+            <select x-model="whenFilter">
+                <option>Select Day</option>
+                <template x-for="[val, txt] in Object.entries({today: 'Today', week: 'This Week', month: 'This Month'})" :key="val">
+                    <option :value="val" x-text="txt"></option>
+                </template>
+            </select>
+            <button @click="filterResults" :disabled="! isFilterable">
+                <ion-icon name="search" class="font-size-xs"></ion-icon>
+                search
+            </button>
+            <button disabled>&nbsp;</button>
+            <button @click.self="clearFilter" :disabled="! isFiltering">
+                clear filter
+                <ion-icon name="leaf-outline" class="font-size-xs"></ion-icon>
+            </button>
+        </span>
+    </div>
+
+    <div class="easel" x-init="calculateHeight($el, 10); fetchAll()">
+        <table class="table is-striped is-fullwidth is-hoverable paginated">
+            <thead>
+                <th style="width: 5%">Event</th>
+                <th style="width: 30%">Action</th>
+                <th style="width: 10%">Deduper</th>
+                <th>Payload</th>
+                <th style="width: 20%">Timestamped</th>
+            </thead>
+            <tbody x-init="() => { calculateHeight($el, 100); }" @refresher.window="refreshPage">
+                <template x-for="event in events" :key="event.event">
+                    <tr>
+                        <td x-text="event.event" style="width: 5%"></td>
+                        <td x-text="event.action" style="width: 30%"></td>
+                        <td x-text="event.deduper" style="width: 10%"></td>
+                        <td x-text="truncate(JSON.stringify(event.payload, undefined, 2), 100)"></td>
+                        <td x-text="event.timestamped" style="width: 20%"></td>
+                    </tr>
+                </template>
+            </tbody>
+            <tfoot style="position: sticky; bottom: 0">
+                <tr>
+                    <th>Event</th>
+                    <th>Action</th>
+                    <th>Deduper</th>
+                    <th>Payload</th>
+                    <th>Timestamped</th>
+                </tr>
+            </tfoot>
+        </table>
+        {{ pagination() }}
+    </div>
+</section>
+{% endblock %}
+
+{% block wizard %}
+<span x-data="{
+    ide: null,
+    actions: [],
+    action: '',
+    deduper: '',
+    payload: '',
+    passphrase: '',
+    fetchActions(){
+        fetch('/v1/actions', {
+            method: 'GET'
+        }).then(res => {
+            if(res.status !== 200) throw Error();
+            return res.json()
+        }).then(data => {
+            this.actions = data;
+        }).catch(err => {
+        })
+    },
+    resetForm(){
+        this.passphrase = '';
+        this.action = '';
+        this.deduper = '';
+        this.payload = '';
+    },
+    publishEvent(){
+        superpost('/v1/events').send({
+            action: this.action,
+            deduper: this.deduper,
+            passphrase: this.passphrase,
+            payload: JSON.parse(this.ide.getValue())
+        }).then(res => {
+            supertoast('info', 'Event published successfully')
+            this.resetForm();
+            $dispatch('refresher');
+            showModalContent = false;
+        }).catch(err => {
+            supertoast('error', err.response.body.error);
+        })
+    }
+}">
+    <div class="modal-card-body p-5">
+        <div class="brick">
+            <label class="font-800 mr-2">Action: </label>
+            <div class="select">
+                <select x-model="action" id="" x-init="fetchActions">
+                    <option>Select An Action</option>
+                    <template x-for="dat in actions">
+                        <option :value="dat.action" x-text="`(${dat.id}): ${dat.action}`"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+        <div class="brick vertical-aligns-middle">
+            <label class="font-800 mr-2 vertical-aligns-middle">Deduper (unique): </label>
+            <input type="text" class="w-30em input" placeholder="Unique deduplication key for event..." x-model="deduper">
+        </div>
+        <div class="brick vertical-aligns-middle">
+            <label class="font-800 mr-2">Passphrase: </label>
+            <div class="control display-inline-block has-icons-right" x-data="{visible: false}">
+                <input :type="visible ? 'text' : 'password'" class="w-30em input" placeholder="Enter passphrase to publish event..." x-model="passphrase">
+                <span class="icon is-right" @click="visible = !visible">
+                    <img :src="`/public/icons/${visible ? 'eye' : 'neye'}.svg`" class="pointer-events-all"></img>
+                </span>
+            </div>
+        </div>
+        <div class="brick">
+            <label class="font-800 mr-2">Payload (JSON): </label>
+            <div id="schemator" style="height: 30em" x-init="() => {
+                ide = ace.edit($el);
+                ide.session.setMode('ace/mode/json');
+            }" @keydown.cmd.s.prevent="() => {
+                supertoast('info', 'Click the save button below to save this action')
+            }"></div>
+        </div>
+    </div>
+    <div class="modal-card-foot">
+        <button class="button primary" @click="publishEvent">Publish Event</button>
+    </div>
+</span>
+{% endblock %}

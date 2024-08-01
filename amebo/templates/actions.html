@@ -1,0 +1,238 @@
+{% extends 'abase.axml' %}
+
+
+{% from 'actions.axml' import pagination %}
+
+
+{% set modal_name = 'Actions' %}
+
+
+{% macro commander() %}
+{
+    isFilterable: false,
+    oldPagination: pagination,
+
+    actionSearch: '',
+    producerSearch: '',
+    schemataSearch: '',
+    whenFilter: '',
+
+    filterResults(){
+        let base = `/v1/actions?pagination=${100}&page=${page}`
+        if(this.actionSearch) base = `${base}&action=${this.actionSearch}`
+        if(this.producerSearch) base = `${base}&producer=${this.producerSearch}`
+        if(this.schemataSearch) base = `${base}&schemata=${this.schemataSearch}`
+        if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
+        fetch(`${base}`)
+        .then(response => response.json())
+        .then(data => {
+            isFiltering = true;
+            actions = data;
+        }).catch(err => {
+            ShowFeedback('error', 'Filter operation failed...')
+        })
+    },
+
+    clearFilter(){
+        this.actionSearch = '';
+        this.producerSearch = '';
+        this.schemataSearch = '';
+        this.whenFilter = '';
+        isFiltering = false;
+        fetchAll();
+    },
+
+    checkDirty(){
+        if(this.actionSearch !== '' ||
+            this.producerSearch !== '' || this.schemataSearch !== '' || this.whenFilter !== ''
+        ) {
+            this.isFilterable = true;
+            return true;
+        }
+        this.isFilterable = false;
+        return false;
+    }
+}
+{% endmacro %}
+
+
+{% block easel %}
+<section x-data="{{ controller('actions') }}">
+    <template x-if="previewing">
+        <div class="columns" x-data="{
+            readOnlyIDE: null
+        }">
+            <aside class="column is-4 px-5">
+                <button class="button is-danger is-small mb-3" @click="previewing = null">Back To Actions</button>
+                <div class="display-flex space-between display-field py-1">
+                    <span class="label">Action</span>
+                    <div x-text="previewing.action"></div>
+                </div>
+                <div class="display-flex space-between display-field py-1">
+                    <span class="label">Producer</span>
+                    <div x-text="previewing.producer"></div>
+                </div>
+                <div class="display-flex space-between display-field py-1">
+                    <span class="label">Created At</span>
+                    <div x-text="previewing.timestamped"></div>
+                </div>
+                <div class="display-flex space-between display-field py-1">
+                    <span class="label"># of Events</span>
+                    <div x-text="`${previewing.successful || 0} / ${previewing.tally || 0}`"></div>
+                </div>
+                <div class="display-flex space-between display-field py-1">
+                    <span class="label"># of Subscribers</span>
+                    <div x-text="`${previewing.subscribers || 0}`"></div>
+                </div>
+            </aside>
+            <aside class="column">
+                <div x-init="() => {
+                    calculateHeight($el, 50);
+                    readOnlyIDE = ace.edit($el);
+                    readOnlyIDE.session.setMode('ace/mode/json');
+                    readOnlyIDE.setValue(previewing.schemata);
+                    readOnlyIDE.setReadOnly(true);
+                }"></div>
+            </aside>
+        </div>
+    </template>
+    <template x-if="!previewing">
+        <aside>
+            <div class="px-3"><span class="font-800">Filters:</span></div>
+            <div class="px-3 pb-2" x-data="{{ commander() }}" x-effect="checkDirty">
+                <span class="display-inline-block">
+                    <input type="text" placeholder="action name..." style="width: 14em" x-model="actionSearch" />
+                    <input type="text" placeholder="producer..." style="width: 20em" x-model="producerSearch">
+                    <input type="text" placeholder="search in json schema payload..." style="width: 25em" x-model="schemataSearch">
+                    <select x-model="whenFilter">
+                        <template x-for="[val, txt] in Object.entries({day: 'Today', week: 'This Week', month: 'This Month'})" :key="val">
+                            <option :value="val" x-text="txt" :selected="val === whenFilter"></option>
+                        </template>
+                    </select>
+                    <button @click="filterResults" :disabled="! isFilterable">
+                        <img src="/public/icons/search.svg" class="svgxs" />
+                        search
+                    </button>
+                    <button disabled>&nbsp;</button>
+                    <button @click.self="clearFilter" :disabled="! isFiltering">
+                        clear filter
+                        <img src="/public/icons/leaf-outline.svg" class="svgxs" />
+                    </button>
+                </span>
+            </div>
+            <div class="easel" x-init="fetchAll">
+                <table class="table is-striped is-fullwidth is-hoverable paginated">
+                    <thead>
+                        <th style="width: 22%">Action</th>
+                        <th style="width: 20%">Producer</th>
+                        <th>Schema</th>
+                        <th>Timestamped</th>
+                    </thead>
+                    <tbody @refresher.window="refreshPage"  x-init="calculateHeight($el, 110);">
+                        <template x-for="action in actions">
+                            <tr class="cursor-pointer" @click="previewing = action">
+                                <td x-text="action.action" style="width: 22%"></td>
+                                <td x-text="action.producer" style="width: 20%"></td>
+                                <td x-text="`${JSON.stringify(action.schemata, undefined, 2).length} characters`"></td>
+                                <td x-text="action.timestamped"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                    <tfoot>
+                        <th>Action</th>
+                        <th>Producer</th>
+                        <th>Schema</th>
+                        <th>Timestamped</th>
+                    </tfoot>
+                </table>
+            </div>
+            {{ pagination() }}
+        </aside>
+    </template>
+</section>
+{% endblock %}
+
+
+{% block wizard %}
+<span x-data="{
+    ide: null,
+    producers: [],
+    producer: '',
+    schema: '',
+    action: '',
+    passphrase: '',
+    fetchProducers(){
+        fetch('/v1/producers', {
+            method: 'GET'
+        }).then(res => {
+            if(res.status !== 200) throw Error();
+            return res.json()
+        }).then(data => {
+            this.producers = data;
+        }).catch(err => {
+        })
+    },
+    resetForm(){
+        this.producer = '';
+        this.passphrase = '';
+        this.action = '';
+        this.schema = '';
+    },
+    saveAction(){
+        superpost('/v1/actions').send({
+            producer: this.producer,
+            schemata: this.ide.getValue(),
+            passphrase: this.passphrase,
+            action: this.action
+        }).then(res => {
+            ShowFeedback('info', 'Action created')
+            this.resetForm();
+            $dispatch('refresher');
+            showModalContent = false;
+        }).catch(err => {
+            supertoast('error', err.response.body.error)
+        })
+    }
+}">
+    <div class="modal-card-body p-5">
+        <div class="brick vertical-aligns-middle">
+            <label class="font-800 mr-2 vertical-aligns-middle">Action Name: </label>
+            <input type="text" class="w-30em input" placeholder="Enter a name for your action..." x-model="action">
+        </div>
+        <div class="brick vertical-aligns-middle">
+            <label class="font-800 mr-2">Producer: </label>
+            <div class="select">
+                <select x-model="producer" x-init="fetchProducers">
+                    <option>Select A Producer</option>
+                    <template x-for="producer in producers">
+                        <option :value="producer.name" x-text="producer.name"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+        <div class="brick vertical-aligns-middle">
+            <label class="font-800 mr-2">Passphrase: </label>
+            <div class="control display-inline-block has-icons-right" x-data="{
+                visible: false
+            }">
+                <input :type="visible ? 'text' : 'password'" class="w-30em input" placeholder="Enter passphrase for producer..." x-model="passphrase">
+                <span class="icon is-right" @click="visible = !visible">
+                    <img :src="`/public/icons/${visible ? 'eye' : 'neye'}.svg`" class="pointer-events-all"></img>
+                </span>
+            </div>
+        </div>
+        <div class="brick">
+            <label class="font-800 mr-2">Schema (JSON): </label>
+            <div id="schemator" style="height: 30em" x-init="() => {
+                ide = ace.edit($el);
+                ide.session.setMode('ace/mode/json');
+            }" @keydown.cmd.s.prevent="() => {
+                supertoast('info', 'Click the save button below to save this action')
+            }"></div>
+        </div>
+    </div>
+    <div class="modal-card-foot">
+        <button class="button primary" @click="saveAction">Save Action</button>
+    </div>
+</span>
+{% endblock %}

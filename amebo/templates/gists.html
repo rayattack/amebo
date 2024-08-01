@@ -1,0 +1,170 @@
+{% extends 'abase.axml' %}
+
+{% from 'actions.axml' import pagination %}
+
+
+{% macro commander() %}
+{
+    isFilterable: false,
+
+    originSearch: '',
+    completedFilter: 'all',
+    destinationSearch: '',
+    gistSearch: '',
+    eventSearch: '',
+    whenFilter: '',
+
+    filterResults(){
+        let base = `/v1/gists?pagination=${pagination}&page=${page}`
+        if(this.originSearch) base = `${base}&origin=${this.originSearch}`
+        if(this.completedFilter) base = `${base}&completed=${this.completedFilter}`
+        if(this.destinationSearch) base = `${base}&destination=${this.destinationSearch}`
+        if(this.gistSearch) base = `${base}&gist=${this.gistSearch}`
+        if(this.eventSearch) base = `${base}&event=${this.eventSearch}`
+        if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
+        fetch(`${base}`)
+        .then(response => response.json())
+        .then(data => {
+            isFiltering = true;
+            gists = data;
+        }).catch(err => {
+            ShowFeedback('error', 'Filter operation failed...')
+        })
+    },
+
+    clearFilter(){
+        this.originSearch = '';
+        this.completedFilter = 'all';
+        this.destinationSearch = '';
+        this.gistSearch = '';
+        this.eventSearch = '';
+        this.whenFilter = '';
+        isFiltering = false;
+        fetchAll();
+    },
+
+    checkDirty(){
+        if(this.originSearch !== '' || 
+            this.completedFilter !== 'all' ||
+            this.destinationSearch !== '' ||
+            this.gistSearch !== '' ||
+            this.eventSearch !== '' || this.whenFilter !== ''
+        ) {
+            this.isFilterable = true;
+            return true;
+        }
+        this.isFilterable = false;
+        return false;
+    }
+}
+{% endmacro %}
+
+
+{% block easel %}
+<section x-data="{{ controller('gists') }}">
+    <div><span class="font-800 pr-3">Filters:</span></div>
+    <div class="pb-3" x-data="{{ commander() }}" x-effect="checkDirty">
+        <span class="display-inline-block">
+            <input type="text" placeholder="origin producer..." style="width: 14em" x-model="originSearch">
+            <select x-model="completedFilter">
+                <option>Is Completed?</option>
+                <template x-for="val in ['True', 'False']" :key="val">
+                    <option :value="val.toLowerCase()" x-text="val" :selected="val === completedFilter"></option>
+                </template>
+            </select>
+            <input type="text" placeholder="destination producer..." style="width: 20em" x-model="destinationSearch">
+            <input type="text" placeholder="gist id..." style="width: 6em" x-model="gistSearch">
+            <input type="text" placeholder="event name..." style="width: 15em" x-model="eventSearch">
+            <select x-model="whenFilter">
+                <template x-for="[val, txt] in Object.entries({day: 'Today', week: 'This Week', month: 'This Month'})" :key="val">
+                    <option :value="val" x-text="txt" :selected="val === whenFilter"></option>
+                </template>
+            </select>
+            <button @click="filterResults" :disabled="! isFilterable">
+                <img src="/public/icons/search.svg" class="svgxs" />
+                search
+            </button>
+            <button disabled>&nbsp;</button>
+            <button @click.self="clearFilter" :disabled="! isFiltering">
+                clear filter
+                <img src="/public/icons/leaf-outline.svg" class="svgxs" />
+            </button>
+        </span>
+    </div>
+
+    <div class="easel" x-init="calculateHeight($el, 10); fetchAll()">
+        <table class="table is-striped is-fullwidth is-hoverable paginated">
+            <thead>
+                <th style="width: 3%">#</th>
+                <th>Origin</th>
+                <th style="width: 10%">Completed</th>
+                <th>Destination</th>
+                <th style="width: 5%">Gist</th>
+                <th>Event</th>
+                <th>Timestamped</th>
+                <th style="width: 7%">Resend</th>
+            </thead>
+            <tbody x-init="() => { calculateHeight($el, 100); }">
+                <template x-for="gist, tally in gists" :key="gist.gist">
+                    <tr>
+                        <td x-text="tally + 1 + (pagination * (page - 1))" style="width: 3%"></td>
+                        <td x-text="gist.origin"></td>
+                        <td x-text="gist.completed" style="width: 10%"></td>
+                        <td x-text="gist.destination"></td>
+                        <td x-text="gist.gist" style="width: 5%"></td>
+                        <td x-text="gist.event"></td>
+                        <td x-text="gist.timestamped"></td>
+                        <td x-data="{{ resendable() }}" style="width: 5%">
+                            <button title="Resend This Gist"
+                                @click="resendGist(gist.gist)"
+                                :class="resending === gist.gist ? 'is-loading' : ''">
+                                <img src="/public/icons/send.svg" class="svgxs"/>
+                            </button>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+            <tfoot style="position: sticky; bottom: 0">
+                <tr>
+                    <th style="width: 3%">#</th>
+                    <th>Origin</th>
+                    <th style="width: 10%">Completed</th>
+                    <th>Destination</th>
+                    <th style="width: 5%">Gist</th>
+                    <th>Event</th>
+                    <th>Timestamped</th>
+                    <th style="width: 7%">Resend</th>
+                </tr>
+            </tfoot>
+        </table>
+        {{ pagination() }}
+    </div>
+</section>
+{% endblock %}
+
+
+{% macro resendable() %}
+{
+    resending: null,
+    resendGist(gist){
+        this.resending = gist;
+        fetch(`/v1/regists/${gist}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(response => response.json())
+        .then(data => {
+            if(data.error) {
+                this.resending = null;
+                return ShowFeedback('error', data.error);
+            }
+            this.resending = null;
+            ShowFeedback('success', `Gist ${gist} resent...`, 7000);
+        })
+        .catch(err => {
+            this.resending = null;
+            ShowFeedback('error', 'Could not resend gist...', 1000)
+        })
+    }
+}
+{% endmacro %}

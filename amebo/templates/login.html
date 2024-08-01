@@ -1,0 +1,103 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amebo</title>
+    
+    <link rel="stylesheet" href="/public/bulma.min.css">
+    <link rel="stylesheet" href="/public/toastify.min.css" />
+    <link rel="stylesheet" href="/public/all.css">
+
+    <script src="/public/alpine.min.js" defer></script>
+    <script src="/public/toastify.js"></script>
+</head>
+<body>
+    <div class="container is-fluid">
+        <div class="columns">
+            <div class="column is-6 is-offset-3"
+                x-data="{
+                    loading: false,
+                    username: 'username',
+                    password: 'password',
+                    scheme: 'password',
+                    doLogin(){
+                        fetch('/v8/tokens', {
+                            method: 'POST',
+                            credentials: 'include',
+                            headers: {
+                                'x-requested-with': '{{ctx.form_token}}',
+                                'content-type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                username: this.username,
+                                password: this.password,
+                                scheme: this.scheme
+                            })
+                        }).then(res => {
+                            if(res.status === 202) return res.json();
+                            throw Error()
+                        }).then(data => {
+                            Toastify({text: 'Logged in...', style: {background: 'green'}}).showToast();
+                            window.location = '/actions'
+                        }).catch(err => {
+                            Toastify(
+                                {text: 'Login failed', style: {background: 'red'}}
+                            ).showToast()
+                        })
+                    },
+                    doReset(scheme){
+                        this.password = '';
+                        this.username = '';
+                    }
+                }">
+                <br />
+                <h1 class="mt-6 mb-1 title">Amebo 1.0</h1>
+                <hr class="mt-1" />
+                <div class="tabs" x-effect="doReset(scheme)">
+                    <ul>
+                        <li :class="scheme === 'password' ? 'is-active': ''" @click="scheme = 'password'"><a>Administrator</a></li>
+                        <li :class="scheme === 'token' ? 'is-active': ''" @click="scheme = 'token'"><a>Producer Token</a></li>
+                    </ul>
+                </div>
+                <template x-if="scheme == 'token'">
+                    <div>
+                        <div class="field">
+                            <label for="" class="label">Producer</label>
+                            <div class="control">
+                                <input type="text" x-model="username" class="input" placeholder="Producer Name/ID">
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="" class="label">Secret</label>
+                            <div class="control">
+                                <textarea class="textarea" x-model="password"
+                                    placeholder="Paste producer secret key here..."
+                                    rows="7"></textarea>
+                            </div>
+                        </div>
+                        <button class="button is-info is-large is-fullwidth mt-6" @click="doLogin">Login As Producer</button>
+                    </div>
+                </template>
+                <template x-if="scheme == 'password'">
+                    <div>
+                        <div class="field">
+                            <label for="username">Username</label>
+                            <div class="control">
+                                <input name="username" x-model="username" type="text" class="input" placeholder="Administrator username">
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label for="password">Password</label>
+                            <div class="control">
+                                <input type="password" x-model="password" class="input" placeholder="Enter admin password">
+                            </div>
+                        </div>
+                        <button class="button is-info is-large is-fullwidth mt-6" @click="doLogin">Login As Administrator</button>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
