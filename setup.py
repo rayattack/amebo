@@ -16,7 +16,6 @@ requires = [
     'fastjsonschema>=2.19.1',
     'orjson>=3.8.5',
     'jinja2>=3.1.2',
-    'routerling>=0.5.1',
     'pydantic>=1.10.4',
     'httpx>=0.23.3',
 ]
