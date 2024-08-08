@@ -1,0 +1,78 @@
+
+{% macro scripts() %}
+<script>
+    const FeedbackColors = {
+        'error': 'linear-gradient(to right, #bd4f6c 0%, #d7816a 74%)',
+        'success': 'linear-gradient(to right, #40b88a 0%, #179599 74%)',
+        'warning': 'linear-gradient(to right, #cca62b 0%, #cc8c2b 74%)',
+    }
+    const ShowFeedback = (type, text, dur, handler, closable) => {
+        const background = FeedbackColors[type];
+        const duration = dur || 5000;
+        const close = closable || false;
+        const onClick = handler || (() => {});
+
+        Toastify({text, duration, style: {background}, onClick, close}).showToast();
+    }
+
+    const xrequest = (url, data, vm) => {
+        const _helper = (method, nodata) => {
+            const base = superagent[method](url)
+                .set('content-type', 'application/json')
+            if(nodata){
+                let viewmodel = data || 'webclient';
+                return base.set('X-Requested-With', viewmodel);
+            }
+            else {
+                let viewmodel = vm || 'webclient';
+                return base.set('X-Requested-With', viewmodel).send(JSON.stringify(data))
+            }
+        }
+        return {
+            post: _helper('post'),
+            get: _helper('get', true),
+            put: _helper('put'),
+            delete: _helper('delete'),
+            patch: _helper('patch')
+        }
+    }
+
+    const xwidgets = (url, option={}) => {
+        return superagent.post(url).set(
+            'X-Requested-With', option.identifier || 'viewmodel',
+        ).set(
+            'Content-Type', 'text/html'
+        ).send();
+    }
+
+    const xswidgets = (url, options) => {
+        return superagent.post(url).set(
+            'X-Requested-With', options.identifier
+        ).set(
+            'Content-Type', 'text/html'
+        ).send();
+    }
+</script>
+{% endmacro %}
+
+
+{% macro pagination() %}
+<div class="is-flex justify-content-space-between p-3" style="position: sticky; bottom: 1em;">
+    <section>
+        <button @click="pageDown" :disabled="isFiltering">&lt;</button>
+        <span class="font-size-xs font-800" x-text="isFiltering ? '...' : `Page ${page}`"></span>
+        <button @click="pageUp" :disabled="isFiltering">&gt;</button>
+        <button disabled>&nbsp;</button>
+        <input placeholder="page #" @keyup.enter.self="fetchAll()" x-model.number="page" :disabled="isFiltering">
+        <button @click="() => { fetchAll() }" :disabled="isFiltering">Go</button>
+    </section>
+    <section>
+        <select name="" x-model="pagination" x-effect="refreshPage()" :disabled="isFiltering">
+            <template x-for="paginate in [15, 25, 50, 100]">
+                <option x-text="paginate"></option>
+            </template>
+        </select>
+        rows
+    </section>
+</div>
+{% endmacro %}

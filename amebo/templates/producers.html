@@ -1,0 +1,153 @@
+{% extends 'abase.axml' %}
+
+{% from 'actions.axml' import pagination %}
+
+{% set modal_name = 'Producers' %}
+
+
+{% macro commander() %}
+{
+    isFilterable: false,
+
+    nameSearch: '',
+    locationSearch: '',
+    whenFilter: '',
+
+    filterResults(){
+        let base = `/v1/producers?pagination=${pagination}`
+        if(this.nameSearch) base = `${base}&name=${this.nameSearch}`
+        if(this.locationSearch) base = `${base}&location=${this.locationSearch}`
+        if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
+        fetch(`${base}`)
+        .then(response => response.json())
+        .then(data => {
+            isFiltering = true;
+            producers = data;
+        }).catch(err => {
+            ShowFeedback('error', 'Filter operation failed...')
+        })
+    },
+
+    clearFilter(){
+        this.nameSearch = '';
+        this.locationSearch = '';
+        this.whenFilter = '';
+        refreshPage();
+    },
+
+    checkDirty(){
+        if(this.nameSearch !== '' || this.locationSearch !== '' || this.whenFilter !== '') {
+            this.isFilterable = true;
+            return true;
+        }
+        this.isFilterable = false;
+        return false;
+    }
+}
+{% endmacro %}
+
+
+{% block easel %}
+<section x-data="{{ controller('producers') }}">
+    <div class="px-3">
+        <div><span class="font-800 pr-3">Filters:</span></div>
+        <div class="pb-3" x-data="{{ commander() }}" x-effect="checkDirty">
+            <span class="display-inline-block">
+                <input type="text" placeholder="search by producer name..." class="w-20em" x-model="nameSearch">
+                <button disabled>&nbsp;</button>
+                <input type="text" class="w-20em" placeholder="with producer address" x-model="locationSearch">
+                <input type="text" placeholder="search disabled..." disabled>
+                <select x-model="whenFilter">
+                    <option>Select Date</option>
+                    <template x-for="[val, txt] in Object.entries({today: 'Today', week: 'This Week', month: 'This Month'})" :key="val">
+                        <option :value="val" x-text="txt"></option>
+                    </template>
+                </select>
+                <button @click="filterResults" :disabled="! isFilterable">
+                    <ion-icon name="search" class="font-size-xs"></ion-icon>
+                    search
+                </button>
+                <button disabled>&nbsp;</button>
+                <button @click.self="clearFilter" :disabled="! isFiltering">
+                    clear filter
+                    <ion-icon name="leaf-outline" class="font-size-xs"></ion-icon>
+                </button>
+            </span>
+        </div>
+    </div>
+
+    <div class="easel" x-init="calculateHeight($el, 10)">
+        <table class="table is-striped is-fullwidth is-hoverable">
+            <thead>
+                <th>Producer</th>
+                <th>Location</th>
+                <th>Pass phrase</th>
+                <th>Timestamped</th>
+            </thead>
+            <tbody @refresher.window="refreshPage" x-init="() => { calculateHeight($el, 100); }">
+                <template x-for="producer in producers">
+                    <tr>
+                        <td x-text="producer.name"></td>
+                        <td x-text="producer.location"></td>
+                        <td x-text="producer.passphrase"></td>
+                        <td x-text="producer.timestamped"></td>
+                    </tr>
+                </template>
+            </tbody>
+            <tfoot style="position: sticky; bottom: 0">
+                <th>Producer</th>
+                <th>Location</th>
+                <th>Pass phrase</th>
+                <th>Timestamped</th>
+            </tfoot>
+        </table>
+        {{ pagination() }}
+    </div>
+</section>
+{% endblock %}
+
+
+{% block wizard %}
+<span x-data="{
+    name: '',
+    address: '',
+    passphrase: '',
+    resetForm(){
+        this.name = '';
+        this.passphrase = '';
+        this.address = '';
+    },
+    saveProducer(){
+        superpost('/v1/producers').send({
+            name: this.name,
+            address: this.address,
+            passphrase: this.passphrase
+        }).then(res => {
+            supertoast('info', 'Producer created');
+            this.resetForm();
+            $dispatch('refresher');
+            showModalContent = false;
+        }).catch(err => {
+            supertoast('error', err.response.body.error);
+        })
+    }
+}">
+    <div class="modal-card-body p-5">
+        <div class="brick">
+            <label class="font-800 mr-2">Name: </label>
+            <input type="text" class="w-30em input" placeholder="Enter a name for your producer..." x-model="name">
+        </div>
+        <div class="brick">
+            <label class="font-800 mr-2">Address: </label>
+            <input type="text" class="w-30em input" placeholder="Enter ip/http address for your producer..." x-model="address">
+        </div>
+        <div class="brick">
+            <label class="font-800 mr-2">Pass phrase: </label>
+            <textarea class="mw-40em text" rows="10" x-model="passphrase"></textarea>
+        </div>
+    </div>
+    <div class="modal-card-foot">
+        <button class="button primary" @click="saveProducer">save producer</button>
+    </div>
+</span>
+{% endblock %}

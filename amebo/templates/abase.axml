@@ -1,0 +1,123 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Amebo 1.0</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css">
+
+    <link rel="stylesheet" href="/public/toastify.min.css" />
+    <link rel="stylesheet" href="/public/all.css">
+    <link rel="stylesheet" href="/public/heaven.css">
+
+    <script src="/public/alpine.min.js" defer></script>
+    <script src="/public/toastify.js"></script>
+
+    {% from 'actions.axml' import scripts %}
+</head>
+<body class="bg-flowers container is-fluid py-3" style="height: 100vh; overflow: hidden" x-data="{
+    showModalContent: false
+}">
+    <div class="columns is-multiline" x-data="{showingWizard: false}">
+        <div class="column is-12">
+            <section class="bg-almost-white panel pb-3">
+                <p class="panel-heading is-flex justify-content-space-between">
+                    <button class="button is-link is-small">
+                        <span class="icon">
+                            <img src="/public/icons/add.svg" style="filter: invert(1)"></img>
+                        </span>
+                        <span class="icon-text" @click="() => {
+                            showModalContent = true;
+                        }">Create New</span>
+                    </button>
+                    <span>Amebo 1.0</span>
+                </p>
+                <p class="panel-tabs">
+                    {% set icons = {
+                        'producers': 'hardware-chip',
+                        'actions': 'bulb',
+                        'events': 'flash-outline',
+                        'subscribers': 'ear',
+                        'gists': 'megaphone'
+                    } %}
+                    {% for target in ['producers', 'actions', 'events', 'subscribers', 'gists'] %}
+                        <a href="/p/{{target}}" class="{{ 'is-active font-900' if req.url[1:] == target else '' }} is-flex align-items-center">
+                            <span class="icon">
+                                <img src="/public/icons/{{ icons[target] }}.svg" class="svgi svgxs"></img>
+                            </span>
+                            <span>{{target | title}}</span>
+                        </a>
+                    {% endfor %}
+                </p>
+                <div>
+                    {% macro controller(target) %}
+                        {
+                            {{target}}: [],
+                            previewing: false,
+                            pagination: 15,
+                            page: 1,
+                            isPaginating: false,
+                            isFiltering: false,
+
+                            calculateHeight(el, space){
+                                window.addEventListener('resize', (evt) => {
+                                    let boundaries = el.getBoundingClientRect();
+                                    el.style.height = window.innerHeight - boundaries.top - space;
+                                })
+                                el.style.height = window.innerHeight - el.getBoundingClientRect().top - space;
+                            },
+
+                            fetchAll() {
+                                fetch(`/v1/{{target}}?pagination=${this.pagination}&page=${this.page}`)
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        ShowFeedback('success', 'Done fetching {{target}}...', 1500)
+                                        this.{{target}} = data;
+                                    })
+                                    .catch(err => ShowFeedback('error', 'Something went wrong whilst fetching {{target}}...'))
+                            },
+
+                            pageDown(){ if(this.page <= 1) return; this.page -= 1; this.fetchAll(); },
+                            pageUp(){ this.page += 1; this.fetchAll() },
+
+                            refreshPage() {
+                                fetch(`/v1/{{target}}?pagination=${this.pagination}&page=1`)
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        this.{{target}} = data;
+                                    })
+                                    .catch(err => ShowFeedback('error', 'Pagination failed...'))
+                             },
+
+                            schemafy(schema) {
+                                return JSON.stringify(schema, undefined, 2)
+                            },
+
+                            truncate(text, max) {
+                                return text.length > max ? text.slice(0, max) + '...' : text;
+                            }
+                        }
+                    {% endmacro %}
+
+                    {% block easel %}{% endblock %}
+                </div >
+            </section>
+        </div>
+    </div>
+
+    <div class="modal" :class="showModalContent ? 'is-active' : ''">
+        <div class="modal-background" @click.self="showModalContent = false"></div>
+        <div class="modal-card" style="width: 70vw; position: relative; min-height: 70vh;">
+            <div class="bg-primary fg-primary modal-card-head py-2 px-5 border-radius-0">
+                <div class="typo head">{{ modal_name }} Wizard</div>
+            </div>
+            {% block wizard %}
+            {% endblock %}
+        </div>
+    </div>
+    {{ scripts() }}
+
+    {% include 'scripts.axml' %}
+    {% include 'functions.axml' %}
+</body>
+</html>
