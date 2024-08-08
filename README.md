@@ -2,14 +2,14 @@
 
 Amebo is the simplest pubsub server to use, deploy, understand or maintain. It was
 built to enable communication between applications i.e. microservices or
-modules (if you are using monoliths) collectively called **producers**, and hopes to be able to serve as a small
+modules (if you are using monoliths) collectively called **applications**, and hopes to be able to serve as a small
 but capable and simpler alternative to Kafka, RabbitMQ, SQS/SNS.
 
-1. Availability: Amebo runs on battle tested open source tools i.e. Redis, Postgres and provides the same level of availability guarantees
+1. Availability: Amebo runs on battle tested open source tools i.e. Postgres/SQLite and provides the same level of availability guarantees provided by the backing storage system.
 
 1. Reliability: Amebo has been used at scale by open source projects to handle 100's of millions of request
 
-1. Latency: Amebo guarantees sub 100ms latencies at scale (barring network and hardware limitations)
+1. Latency: Amebo guarantees sub 50ms latencies at scale (barring network and hardware limitations)
 
 
 &nbsp;
@@ -20,13 +20,13 @@ Amebo has only 4 concepts (first class objects) to understand or master.
 
 &nbsp;
 
-### 1. Producers
+### 1. Applications
 ---
 These can be microservices or modules (in a monolith) - that create and receive notifications about [_**events**_](#2-events). All applications must be registered on
     amebo ;-) before they can publish [_**events**_](#3-events).
 
 
-### 2. Action
+### 2. Actions
 ---
 This is something that can happen in an [_**application**_](#1-applications) i.e. creating a customer, deleting an order. They are registered
     on Amebo by their parent [_**application**_](#1-applications), and all actions must provide a valid JSON Schema (can be empty "{}") that Amebo
@@ -37,7 +37,7 @@ This is something that can happen in an [_**application**_](#1-applications) i.e
 ---
 An event is the occurence of an action and in practice is a HTTP request sent by an [_**application**_](#1-applications) to Amebo to signal it about the occurence of an action locally. Events can have a json payload that must match the JSON Schema of its parent action.
 
-### 4. Subscribers
+### 4. Subscriptions
 ---
 These are HTTP URLs (can be valid hostname for loopback interface on TCP/IP as well) endpoints registered by [_**applications**_](#1-applications) to
     receive [_**action**_](#3-actions) payloads.
@@ -62,10 +62,10 @@ ambeo -w 2 -a 0.0.0.0:8701
 
 &nbsp;
 
-## 1st : Tell Amebo about all your event producers
+## 1st : Tell Amebo about all the applications it should tattle about
 ---
 
-`endpoint: /v1/producers`
+`endpoint: /v1/applications`
 
 <table>
 <tr>
@@ -80,11 +80,11 @@ ambeo -w 2 -a 0.0.0.0:8701
     "$schema": "",
     "type": "object",
     "properties": {
-        "microservice": {"type": "string"},
+        "application": {"type": "string"},
         "passphrase": {"type": "string"},
-        "location": {"type": "web", "format": "ipv4 | ipv6 | hostname | idn-hostname"}
+        "address": {"type": "web", "format": "ipv4 | ipv6 | hostname | idn-hostname"}
     },
-    "required": ["microservice", "passphrase", "location"]
+    "required": ["application", "passphrase", "address"]
 }
 ```
 
@@ -93,9 +93,9 @@ ambeo -w 2 -a 0.0.0.0:8701
 
 ```json
 {
-    "microservice": "customers",
-    "passphrase": "some-super-duper-secret-of-the-module-or-microservice",
-    "location": "http://0.0.0.0:3300"
+    "application": "customers",
+    "passphrase": "some-super-duper-secret-of-the-module-or-application-or-microservice",
+    "address": "http://0.0.0.0:3310"
 }
 ```
 
@@ -124,7 +124,7 @@ ambeo -w 2 -a 0.0.0.0:8701
     "type": "object",
     "properties": {
         "action": {"type": "string"},
-        "microservice": {"type": "string"},
+        "application": {"type": "string"},
         "schemata": {
             "type": "object",
             "properties": {
@@ -134,7 +134,7 @@ ambeo -w 2 -a 0.0.0.0:8701
             }
         }
     },
-    "required": ["action", "microservice", "schemata"]
+    "required": ["action", "application", "schemata"]
 }
 ```
 
@@ -144,7 +144,7 @@ ambeo -w 2 -a 0.0.0.0:8701
 ```json
 {
     "action": "customers.v1.created",
-    "microservice": "customers",
+    "application": "customers",
     "schemata": {
         "$id": "https://your-domain/customers/customer-created-schema-example.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -192,14 +192,14 @@ ambeo -w 2 -a 0.0.0.0:8701
     "type": "object",
     "properties": {
         "event": {"type": "string"},
-        "microservice": {"type": "string"},
+        "application": {"type": "string"},
         "schemata": {
             "type": "string",
             "format": "ipv4 | ipv6 | hostname | idn-hostname"
         },
         "location": {"type": "web"}
     },
-    "required": ["microservice", "passphrase", "location"]
+    "required": ["application", "passphrase", "location"]
 }
 ```
 
@@ -209,18 +209,18 @@ ambeo -w 2 -a 0.0.0.0:8701
 ```json
 {
     "event": "customers.v1.created",
-    "microservice": "customers",
+    "application": "customers",
     "schema": {
         "$id": "https://your-domain/customers/customer-created-schema-example.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
             "event": {"type": "string"},
-            "microservice": {"type": "string"},
+            "application": {"type": "string"},
             "schemata": {"type": "string", "format": "ipv4 | ipv6 | hostname | idn-hostname"},
             "location": {"type": "web"}
         },
-        "required": ["microservice", "passphrase", "location"]
+        "required": ["application", "passphrase", "location"]
     },
     "location": "http://0.0.0.0:3300"
 }
@@ -234,13 +234,14 @@ ambeo -w 2 -a 0.0.0.0:8701
 
 ## Finally: Create an endpoint to receive action notifications from Amebo
 ---
-Other applications/modules within the same monolith can create handler endpoints that will be sent the payload with optional
-encryption if an encryption key was provided by the subscriber when registering for the event.
+Other applications/microservices/modules within the same monolith can create handler endpoints that will be sent
+the payload with optional encryption if an encryption key was provided by the subscriber when registering for
+the event.
 
 # Why? Advantages over traditional Message Oriented Middleware(s)
 
-1. Amebo comes complete with a Schema Registry, ensuring actions conform to event schema, and makes it easy for developers to search for events by
-    microservice with commensurate schema (i.e. what is required, what is optional) as opposed to meetings with team mates continually.
+1. Amebo comes complete with a Schema Registry, ensuring actions conform to event schema, and makes it easy for
+developers to search for events by application(s) with commensurate schema (i.e. what is required, what is optional) as opposed to meetings with team mates continually.
 
 1. GUI for tracking events, actions, subscribers. Easy discovery of what actions exist, what events failed and GUI retry for specific subscribers
 

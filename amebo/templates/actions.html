@@ -13,14 +13,14 @@
     oldPagination: pagination,
 
     actionSearch: '',
-    producerSearch: '',
+    applicationSearch: '',
     schemataSearch: '',
     whenFilter: '',
 
     filterResults(){
         let base = `/v1/actions?pagination=${100}&page=${page}`
         if(this.actionSearch) base = `${base}&action=${this.actionSearch}`
-        if(this.producerSearch) base = `${base}&producer=${this.producerSearch}`
+        if(this.applicationSearch) base = `${base}&application=${this.applicationSearch}`
         if(this.schemataSearch) base = `${base}&schemata=${this.schemataSearch}`
         if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
         fetch(`${base}`)
@@ -35,7 +35,7 @@
 
     clearFilter(){
         this.actionSearch = '';
-        this.producerSearch = '';
+        this.applicationSearch = '';
         this.schemataSearch = '';
         this.whenFilter = '';
         isFiltering = false;
@@ -44,7 +44,7 @@
 
     checkDirty(){
         if(this.actionSearch !== '' ||
-            this.producerSearch !== '' || this.schemataSearch !== '' || this.whenFilter !== ''
+            this.applicationSearch !== '' || this.schemataSearch !== '' || this.whenFilter !== ''
         ) {
             this.isFilterable = true;
             return true;
@@ -69,8 +69,8 @@
                     <div x-text="previewing.action"></div>
                 </div>
                 <div class="display-flex space-between display-field py-1">
-                    <span class="label">Producer</span>
-                    <div x-text="previewing.producer"></div>
+                    <span class="label">Application</span>
+                    <div x-text="previewing.application"></div>
                 </div>
                 <div class="display-flex space-between display-field py-1">
                     <span class="label">Created At</span>
@@ -102,7 +102,7 @@
             <div class="px-3 pb-2" x-data="{{ commander() }}" x-effect="checkDirty">
                 <span class="display-inline-block">
                     <input type="text" placeholder="action name..." style="width: 14em" x-model="actionSearch" />
-                    <input type="text" placeholder="producer..." style="width: 20em" x-model="producerSearch">
+                    <input type="text" placeholder="application..." style="width: 20em" x-model="applicationSearch">
                     <input type="text" placeholder="search in json schema payload..." style="width: 25em" x-model="schemataSearch">
                     <select x-model="whenFilter">
                         <template x-for="[val, txt] in Object.entries({day: 'Today', week: 'This Week', month: 'This Month'})" :key="val">
@@ -132,7 +132,7 @@
                         <template x-for="action in actions">
                             <tr class="cursor-pointer" @click="previewing = action">
                                 <td x-text="action.action" style="width: 22%"></td>
-                                <td x-text="action.producer" style="width: 20%"></td>
+                                <td x-text="action.application" style="width: 20%"></td>
                                 <td x-text="`${JSON.stringify(action.schemata, undefined, 2).length} characters`"></td>
                                 <td x-text="action.timestamped"></td>
                             </tr>
@@ -156,31 +156,31 @@
 {% block wizard %}
 <span x-data="{
     ide: null,
-    producers: [],
-    producer: '',
+    applications: [],
+    application: '',
     schema: '',
     action: '',
     passphrase: '',
     fetchProducers(){
-        fetch('/v1/producers', {
+        fetch('/v1/applications', {
             method: 'GET'
         }).then(res => {
             if(res.status !== 200) throw Error();
             return res.json()
         }).then(data => {
-            this.producers = data;
+            this.applications = data;
         }).catch(err => {
         })
     },
     resetForm(){
-        this.producer = '';
+        this.application = '';
         this.passphrase = '';
         this.action = '';
         this.schema = '';
     },
     saveAction(){
         superpost('/v1/actions').send({
-            producer: this.producer,
+            application: this.application,
             schemata: this.ide.getValue(),
             passphrase: this.passphrase,
             action: this.action
@@ -202,10 +202,10 @@
         <div class="brick vertical-aligns-middle">
             <label class="font-800 mr-2">Producer: </label>
             <div class="select">
-                <select x-model="producer" x-init="fetchProducers">
+                <select x-model="application" x-init="fetchProducers">
                     <option>Select A Producer</option>
-                    <template x-for="producer in producers">
-                        <option :value="producer.name" x-text="producer.name"></option>
+                    <template x-for="application in applications">
+                        <option :value="application.name" x-text="application.name"></option>
                     </template>
                 </select>
             </div>

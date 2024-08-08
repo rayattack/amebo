@@ -9,7 +9,7 @@ BEGIN;
 
     CREATE TABLE IF NOT EXISTS applications (
         application text primary key,
-        location text NOT NULL,
+        address text NOT NULL,
         passphrase text NOT NULL,
         timestamped text NOT NULL
     );
