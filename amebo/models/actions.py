@@ -9,7 +9,7 @@ from pydantic import Field, field_validator
 
 class Action(Model):
     action: str
-    producer: str
+    application: str
     schemata: Union[dict, str]
     passphrase: str
     timestamped: datetime = Field(default_factory=datetime.now)

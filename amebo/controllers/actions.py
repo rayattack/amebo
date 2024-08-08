@@ -17,18 +17,18 @@ from amebo.utils.structs import Steps
 def tabulate(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     page, pagination = get_pagination(req)
-    params = ['id', 'action', 'producer', 'schemata', 'timeline']
-    _id, _action, _producer, _schemata, _timeline = [req.queries.get(p) for p in params]
+    params = ['id', 'action', 'application', 'schemata', 'timeline']
+    _id, _action, _application, _schemata, _timeline = [req.queries.get(p) for p in params]
 
     steps = Steps()
     sqls = f'''
         SELECT
-            rowid, action, producer, schemata, timestamped
+            rowid, action, application, schemata, timestamped
         FROM
             actions
             {steps.EQUALS('rowid', _id)}
             {steps.LIKE('action', _action)}
-            {steps.LIKE('producer', _producer)}
+            {steps.LIKE('application', _application)}
             {steps.LIKE('schemata', _schemata)}
             {get_timeline(_timeline, steps)}
         LIMIT {pagination if pagination < MAX_PAGINATION else MAX_PAGINATION}
@@ -48,10 +48,10 @@ def tabulate(req: Request, res: Response, ctx: Context):
     res.body = [{
         'id': id,
         'action': action,
-        'producer': producer,
+        'application': application,
         'schemata': loads(schemata),
         'timestamped': timestamped
-    } for id, action, producer, schemata, timestamped in rows]
+    } for id, action, application, schemata, timestamped in rows]
 
 
 @jsonify
@@ -61,19 +61,19 @@ def insert(req: Request, res: Response, ctx: Context):
     action: Action = ctx.action
 
     table = 'actions'
-    fields = ('action', 'producer', 'schemata', 'timestamped',)
-    values = (action.action, action.producer, dumps(action.schemata), action.timestamped)
+    fields = ('action', 'application', 'schemata', 'timestamped',)
+    values = (action.action, action.application, dumps(action.schemata), action.timestamped)
 
     try:
         cursor: Cursor = db.cursor()
-        producer = cursor.execute(f'''
-            select name, passphrase from producers where name = ?
-        ''', (action.producer,)).fetchone()
-        if not producer:
-            raise ValueError(f'producer {action.producer} not found')
-        name, passphrase = producer
+        _application = cursor.execute(f'''
+            select application, passphrase from applications where application = ?
+        ''', (action.application,)).fetchone()
+        if not _application:
+            raise ValueError(f'Application {action.application} not found')
+        application, passphrase = _application
         if(passphrase != action.passphrase):
-            return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'Incorrect {name} passphrase detected'})
+            return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'Incorrect {application} passphrase detected'})
 
         cursor.execute(f'''
             INSERT INTO {table}({', '.join(fields)}) VALUES(?, ?, ?, ?)

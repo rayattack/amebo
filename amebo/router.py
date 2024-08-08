@@ -43,27 +43,27 @@ router.BEFORE('/x1/*', 'amebo.decorators.security.authorization')
 
 
 # authenticate first
-router.POST('/v8/tokens', 'amebo.controllers.producers.authenticate')
+router.POST('/v8/tokens', 'amebo.controllers.applications.authenticate')
 
 
 # web ui- views/pages/screens
-router.GET('/', 'amebo.controllers.app.login')
-router.GET('/p/:page', 'amebo.controllers.app.pages')
+router.GET('/', 'amebo.controllers.xui.login')
+router.GET('/p/:page', 'amebo.controllers.xui.pages')
 
 
 # api
 router.GET('/v1/actions', 'amebo.controllers.actions.tabulate')
 router.GET('/v1/events', 'amebo.controllers.events.tabulate')
-router.GET('/v1/producers', 'amebo.controllers.producers.tabulate')
+router.GET('/v1/applications', 'amebo.controllers.applications.tabulate')
 router.GET('/v1/subscribers', 'amebo.controllers.subscribers.tabulate')
 router.GET('/v1/gists', 'amebo.controllers.gists.tabulate')
-router.POST('/v1/tokens', 'amebo.controllers.producers.authenticate')
+router.POST('/v1/tokens', 'amebo.controllers.applications.authenticate')
 router.POST('/v1/actions', 'amebo.controllers.actions.insert')
 router.POST('/v1/events', 'amebo.controllers.events.insert')
-router.POST('/v1/producers', 'amebo.controllers.producers.insert')
+router.POST('/v1/applications', 'amebo.controllers.applications.insert')
 router.POST('/v1/subscribers', 'amebo.controllers.subscribers.insert')
 router.POST('/v1/gists/:id', 'amebo.controllers.gists.replay')
-router.PUT('/v1/producers/:id', 'amebo.controllers.producers.update')
+router.PUT('/v1/applications/:id', 'amebo.controllers.applications.update')
 
 # maybe add a route to clear cache of compiled schemas ?
 
