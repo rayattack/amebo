@@ -38,8 +38,9 @@ def tabulate(req: Request, res: Response, ctx: Context):
         cursor = db.cursor()
         rows = cursor.execute(sqls, steps.values).fetchall()
     except Exception as exc:
-        res.status = HTTPStatus.NO_CONTENT
-        res.body = None
+        print('exc: ', exc)
+        res.status = HTTPStatus.OK
+        res.body = []
         return
     finally:
         cursor.close()

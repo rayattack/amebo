@@ -71,7 +71,7 @@
                                 fetch(`/v1/{{target}}?pagination=${this.pagination}&page=${this.page}`)
                                     .then(response => response.json())
                                     .then(data => {
-                                        ShowFeedback('success', 'Done fetching {{target}}...', 1500)
+                                        ShowFeedback('success', 'Done fetching {{target}}...', 1500);
                                         this.{{target}} = data;
                                     })
                                     .catch(err => ShowFeedback('error', 'Something went wrong whilst fetching {{target}}...'))

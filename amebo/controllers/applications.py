@@ -118,7 +118,7 @@ def insert(req: Request, res: Response, ctx: Context):
     
     res.status = HTTPStatus.CREATED
     res.body = {
-        'name': application.name,
+        'name': application.application,
         'location': str(application.address),
         'passphrase': application.passphrase,
         'timestamped': application.timestamped
@@ -129,18 +129,18 @@ def insert(req: Request, res: Response, ctx: Context):
 @expects(Location)
 def update(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
-    microservice = req.params.get('id')
+    application = req.params.get('id')
     location: Location = ctx.location
 
     try:
         cursor = db.cursor()
         cursor.execute(f'''
-            UPDATE applications SET location = ?
+            UPDATE applications SET address = ?
                 WHERE application = ? AND passphrase = ?
-        ''', (location.location, microservice, location.passphrase))
+        ''', (location.location, application, location.passphrase))
     except Exception as exc:
         res.status = HTTPStatus.BAD_REQUEST
-        res.body = {'error': 'could not update microservice'}
+        res.body = {'error': 'could not update application'}
         return
     finally:
         cursor.close()
