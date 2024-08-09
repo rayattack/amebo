@@ -19,19 +19,19 @@ def tabulate(req: Request, res: Response, _: Context):
     page, pagination = get_pagination(req)
 
     params = ['id', 'action', 'deduper', 'payload', 'timeline']
-    _id, _action,  _deduper, _payload, _timeline = [req.params.get(p) for p in params]
+    _id, _action,  _deduper, _payload, _timeline = [req.queries.get(p) for p in params]
 
     steps = Steps()
     sqls = f'''SELECT
             event, action, payload, deduper, timestamped, COUNT(*) AS results
         FROM events
-            {steps.EQUALS(_id, 'event')}
-            {steps.LIKE(_action, 'action')}
-            {steps.EQUALS(_deduper, 'deduper')}
-            {steps.LIKE(_payload, 'payload')}
+            {steps.EQUALS('event', _id)}
+            {steps.LIKE('action', _action)}
+            {steps.LIKE('payload', _payload)}
+            {steps.EQUALS('deduper', _deduper)}
             {get_timeline(_timeline, steps)}
         GROUP BY
-            event, action, payload, deduper, timestamped
+            event, action, deduper, payload, timestamped
         LIMIT {pagination if pagination < MAX_PAGINATION else MAX_PAGINATION}
         OFFSET {(page - 1) * pagination};
     '''
@@ -40,7 +40,7 @@ def tabulate(req: Request, res: Response, _: Context):
         rows = cursor.execute(sqls, steps.values).fetchall()
     except Exception as exc:
         res.status = HTTPStatus.BAD_REQUEST
-        res.body = {'error': f'{exc}'}
+        res.body = []
         return
     finally:
         cursor.close()
@@ -61,19 +61,16 @@ def insert(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     event: Events = ctx.events
 
-    table = 'events'
-    fields = ('action', 'payload', 'deduper', 'timestamped',)
-
     try:
         cursor = db.cursor()
         row = cursor.execute('''
             SELECT
-                schemata, producer, p.passphrase
+                schemata, actions.application, app.passphrase
             FROM
                 actions
+            JOIN applications app ON app.application = actions.application
             WHERE
                 action = ?
-            JOIN producers p ON p.name = actions.producer
         ''', (event.action,)).fetchone()
 
         if not row:
@@ -81,13 +78,15 @@ def insert(req: Request, res: Response, ctx: Context):
             res.body = {'error': 'Action can not be used to process any events'}
             return
 
-        schemata = loads(row[0])
-        _schemas = req.app.peek('schematas')
-        if not _schemas.get(event.action): _schemas[event.action] = compile(loads(schemata))
-        validation = _schemas.get(event.action)
+        schemata = loads(row[0])  # load the schemata from the db
+        schemas = req.app.peek('schematas')  # get the compiled schematas
+        if not schemas.get(event.action): schemas[event.action] = compile(loads(schemata))
+        validation = schemas.get(event.action)
         validation(event.payload)
-        values = (event.action,
-            dumps(event.payload), event.deduper, event.timestamped)
+
+        table = 'events'
+        fields = ['action', 'payload', 'deduper', 'timestamped',]
+        values = [event.action, dumps(event.payload).decode(), event.deduper, event.timestamped]
 
         eventid = cursor.execute(f'''
             INSERT INTO
@@ -104,6 +103,7 @@ def insert(req: Request, res: Response, ctx: Context):
         ''', (event.action,));
 
         db.commit()
+        import pdb; pdb.set_trace()
     except JsonSchemaException:
         return res.out(HTTPStatus.NOT_ACCEPTABLE, {'error': f'Event payload does not conform to {event.action} schema'})
     except Exception as exc:
@@ -115,8 +115,8 @@ def insert(req: Request, res: Response, ctx: Context):
     res.status = HTTPStatus.CREATED
     res.body = {
         'event': eventid[0],
-        'action': event.action,
         'payload': event.payload,
+        'action': event.action,
         'deduper': event.deduper,
         'timestamped': event.timestamped
     }

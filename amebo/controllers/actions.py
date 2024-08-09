@@ -8,6 +8,7 @@ from orjson import dumps, loads
 from amebo.constants.literals import DB, MAX_PAGINATION
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import expects
+from amebo.decorators.providers import cacheschema
 from amebo.models.actions import Action
 from amebo.utils.helpers import get_pagination, get_timeline
 from amebo.utils.structs import Steps
@@ -38,7 +39,6 @@ def tabulate(req: Request, res: Response, ctx: Context):
         cursor = db.cursor()
         rows = cursor.execute(sqls, steps.values).fetchall()
     except Exception as exc:
-        print('exc: ', exc)
         res.status = HTTPStatus.OK
         res.body = []
         return
@@ -87,5 +87,6 @@ def insert(req: Request, res: Response, ctx: Context):
     finally:
         cursor.close()
 
+    ctx.keep('schemata', action.schemata)
     res.status = HTTPStatus.CREATED
     res.body = action.model_dump()

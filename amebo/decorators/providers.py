@@ -10,6 +10,16 @@ from pydantic import BaseModel
 from amebo.utils.structs import Lookup
 
 
+def cacheschema(func):
+    @wraps(func)
+    async def delegate(req: Request, res: Response, ctx: Context):
+        if iscoroutinefunction(func): await func(req, res, ctx)
+        else: func(req, res, ctx)
+        if req.app._.schematas.get(ctx.schemata_name): pass
+        else: req.app._.schematas[ctx.schemata_name] = compile(ctx.schemata)
+    return delegate
+
+
 def expects(Model: BaseModel):
     def wrapper(func):
         async def delegate(req: Request, res: Response, ctx: Context):

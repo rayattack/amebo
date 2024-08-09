@@ -42,3 +42,4 @@ async def initialize(app: Application):
 
 def cache(app: Application):
     app._.tokens = {}
+    app._.schematas = {}
