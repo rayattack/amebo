@@ -1,65 +1,42 @@
-{% extends 'abase.axml' %}
-
-{% from 'actions.axml' import pagination %}
-
-{% set modal_name = 'Applications' %}
-
-
-{% macro commander() %}
-{
-    isFilterable: false,
-
-    nameSearch: '',
-    locationSearch: '',
-    whenFilter: '',
-
-    filterResults(){
-        let base = `/v1/applications?pagination=${pagination}`
-        if(this.nameSearch) base = `${base}&name=${this.nameSearch}`
-        if(this.locationSearch) base = `${base}&location=${this.locationSearch}`
-        if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
-        fetch(`${base}`)
-        .then(response => response.json())
-        .then(data => {
-            isFiltering = true;
-            applications = data;
-        }).catch(err => {
-            ShowFeedback('error', 'Filter operation failed...')
-        })
-    },
-
-    clearFilter(){
-        this.nameSearch = '';
-        this.locationSearch = '';
-        this.whenFilter = '';
-        refreshPage();
-    },
-
-    checkDirty(){
-        if(this.nameSearch !== '' || this.locationSearch !== '' || this.whenFilter !== '') {
-            this.isFilterable = true;
-            return true;
-        }
-        this.isFilterable = false;
-        return false;
-    }
-}
-{% endmacro %}
-
-
-{% block easel %}
+{% extends 'abase.axml' %} {% from 'actions.axml' import pagination %} {% set
+modal_name = 'Applications' %} {% macro commander() %} { isFilterable: false,
+nameSearch: '', addressSearch: '', whenFilter: '', filterResults(){ let base =
+`/v1/applications?pagination=${pagination}` if(this.nameSearch) base =
+`${base}&name=${this.nameSearch}` if(this.addressSearch) base =
+`${base}&address=${this.addressSearch}` if(this.whenFilter) base =
+`${base}&timeline=${this.whenFilter}` fetch(`${base}`) .then(response =>
+response.json()) .then(data => { isFiltering = true; applications = data;
+}).catch(err => { ShowFeedback('error', 'Filter operation failed...') }) },
+clearFilter(){ this.nameSearch = ''; this.addressSearch = ''; this.whenFilter =
+''; refreshPage(); }, checkDirty(){ if(this.nameSearch !== '' ||
+this.addressSearch !== '' || this.whenFilter !== '') { this.isFilterable = true;
+return true; } this.isFilterable = false; return false; } } {% endmacro %} {%
+block easel %}
 <section x-data="{{ controller('applications') }}">
     <div class="px-3">
         <div><span class="font-800 pr-3">Filters:</span></div>
         <div class="pb-3" x-data="{{ commander() }}" x-effect="checkDirty">
             <span class="display-inline-block">
-                <input type="text" placeholder="search by application name..." class="w-20em" x-model="nameSearch">
+                <input
+                    type="text"
+                    placeholder="search by application name..."
+                    class="w-20em"
+                    x-model="nameSearch"
+                />
                 <button disabled>&nbsp;</button>
-                <input type="text" class="w-20em" placeholder="with application address" x-model="locationSearch">
-                <input type="text" placeholder="search disabled..." disabled>
+                <input
+                    type="text"
+                    class="w-20em"
+                    placeholder="with application address"
+                    x-model="addressSearch"
+                />
+                <input type="text" placeholder="search disabled..." disabled />
                 <select x-model="whenFilter">
                     <option>Select Date</option>
-                    <template x-for="[val, txt] in Object.entries({today: 'Today', week: 'This Week', month: 'This Month'})" :key="val">
+                    <template
+                        x-for="[val, txt] in Object.entries({today: 'Today', week: 'This Week', month: 'This Month'})"
+                        :key="val"
+                    >
                         <option :value="val" x-text="txt"></option>
                     </template>
                 </select>
@@ -70,7 +47,10 @@
                 <button disabled>&nbsp;</button>
                 <button @click.self="clearFilter" :disabled="! isFiltering">
                     clear filter
-                    <ion-icon name="leaf-outline" class="font-size-xs"></ion-icon>
+                    <ion-icon
+                        name="leaf-outline"
+                        class="font-size-xs"
+                    ></ion-icon>
                 </button>
             </span>
         </div>
@@ -80,15 +60,18 @@
         <table class="table is-striped is-fullwidth is-hoverable">
             <thead>
                 <th>Name</th>
-                <th>Location</th>
+                <th>Address</th>
                 <th>Pass phrase</th>
                 <th>Timestamped</th>
             </thead>
-            <tbody @refresher.window="refreshPage" x-init="() => { calculateHeight($el, 100); }">
+            <tbody
+                @refresher.window="refreshPage"
+                x-init="() => { calculateHeight($el, 100); }"
+            >
                 <template x-for="application in applications">
                     <tr>
                         <td x-text="application.application"></td>
-                        <td x-text="application.location"></td>
+                        <td x-text="application.address"></td>
                         <td x-text="application.passphrase"></td>
                         <td x-text="application.timestamped"></td>
                     </tr>
@@ -96,7 +79,7 @@
             </tbody>
             <tfoot style="position: sticky; bottom: 0">
                 <th>Name</th>
-                <th>Location</th>
+                <th>Address</th>
                 <th>Pass phrase</th>
                 <th>Timestamped</th>
             </tfoot>
@@ -104,12 +87,12 @@
         {{ pagination() }}
     </div>
 </section>
-{% endblock %}
-
-
-{% block wizard %}
-<span x-data="{
+{% endblock %} {% block wizard %}
+<span
+    x-data="{
     application: '',
+    port: '',
+    scheme: 'http',
     address: '',
     passphrase: '',
     resetForm(){
@@ -117,10 +100,15 @@
         this.passphrase = '';
         this.address = '';
     },
+    get Address(){
+        let suffix = '';
+        if(this.port.length) suffix = `:${this.port}`
+        return `${this.scheme}://${this.address}${suffix}`;
+    },
     saveApplication(){
         superpost('/v1/applications').send({
             application: this.application,
-            address: this.address,
+            address: this.Address,
             passphrase: this.passphrase
         }).then(res => {
             supertoast('info', 'Application created');
@@ -131,23 +119,54 @@
             supertoast('error', err.response.body.error);
         })
     }
-}">
+}"
+>
     <div class="modal-card-body p-5">
         <div class="brick">
             <label class="font-800 mr-2">Name: </label>
-            <input type="text" class="w-30em input" placeholder="Enter a name for your application..." x-model="application">
+            <input
+                type="text"
+                class="w-30em input"
+                placeholder="Enter a name for your application..."
+                x-model="application"
+            />
         </div>
-        <div class="brick">
+        <div class="brick bricks">
             <label class="font-800 mr-2">Address: </label>
-            <input type="text" class="w-30em input" placeholder="Enter ip/http address for your application..." x-model="address">
+            <div>
+                <div class="select">
+                    <select x-model="scheme">
+                        <option value="http">HTTP</option>
+                        <option value="https">HTTPS</option>
+                    </select>
+                </div>
+                <input
+                    type="text"
+                    class="w-30em input"
+                    placeholder="Enter ip/http address for your application..."
+                    x-model="address"
+                />
+                <input
+                    type="text"
+                    class="input width-5em"
+                    placeholder="Port"
+                    x-model="port"
+                />
+            </div>
         </div>
         <div class="brick">
             <label class="font-800 mr-2">Pass phrase: </label>
-            <textarea class="mw-40em text" rows="10" x-model="passphrase"></textarea>
+            <textarea
+                class="mw-40em text"
+                rows="10"
+                x-model="passphrase"
+            ></textarea>
         </div>
     </div>
     <div class="modal-card-foot">
-        <button class="button primary" @click="saveApplication">save application</button>
+        <button class="button primary" @click="saveApplication">
+            save application
+        </button>
     </div>
 </span>
 {% endblock %}

@@ -2,7 +2,6 @@ from os import environ
 from sqlite3 import Connection
 
 from heaven import Application
-from redis import Redis
 from asyncpg import connect as pgconnect
 
 from amebo.constants.literals import DB
@@ -12,7 +11,6 @@ from amebo.utils.structs import Lookup
 
 ENGINES = {
     'sqlite': lambda *args: Connection(*args),
-    'redis': lambda *args: Redis(*args),
     'postgres': lambda *args: pgconnect(*args)
 }
 

@@ -62,14 +62,14 @@ def authenticate(req: Request, res: Response, ctx: Context):
 def tabulate(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     page, pagination = get_pagination(req)
-    params = ['application', 'location', 'timeline']
-    _application, _location, _timeline = [req.queries.get(p) for p in params]
+    params = ['application', 'address', 'timeline']
+    _application, _address, _timeline = [req.queries.get(p) for p in params]
     steps = Steps()
 
-    sqls = f'''SELECT application, location, timestamped
+    sqls = f'''SELECT application, address, timestamped
         FROM applications
             {steps.LIKE('application', _application)}
-            {steps.LIKE('location', _location)}
+            {steps.LIKE('address', _address)}
             {get_timeline(_timeline, steps)}
         LIMIT {pagination if pagination < MAX_PAGINATION else MAX_PAGINATION}
         OFFSET {(page - 1) * pagination};
@@ -87,10 +87,10 @@ def tabulate(req: Request, res: Response, ctx: Context):
     res.status = HTTPStatus.OK
     res.body = [{
         'application': application,
-        'location': location,
+        'address': address,
         'passphrase': '****************',
         'timestamped': timestamped
-    } for application, location, timestamped in rows]
+    } for application, address, timestamped in rows]
 
 
 @jsonify
@@ -102,7 +102,7 @@ def insert(req: Request, res: Response, ctx: Context):
         cursor = db.cursor()
         values = (application.application, str(application.address), application.passphrase, application.timestamped)
         cursor.execute('''
-            INSERT into applications(application, location, passphrase, timestamped) VALUES (?, ?, ?, ?)
+            INSERT into applications(application, address, passphrase, timestamped) VALUES (?, ?, ?, ?)
         ''', values)
         db.commit()
     except IntegrityError as exc:
@@ -115,11 +115,11 @@ def insert(req: Request, res: Response, ctx: Context):
         return
     finally:
         cursor.close()
-    
+
     res.status = HTTPStatus.CREATED
     res.body = {
         'name': application.application,
-        'location': str(application.address),
+        'address': str(application.address),
         'passphrase': application.passphrase,
         'timestamped': application.timestamped
     }

@@ -80,7 +80,7 @@ def insert(req: Request, res: Response, ctx: Context):
 
         schemata = loads(row[0])  # load the schemata from the db
         schemas = req.app.peek('schematas')  # get the compiled schematas
-        if not schemas.get(event.action): schemas[event.action] = compile(loads(schemata))
+        if not schemas.get(event.action): schemas[event.action] = compile(schemata)
         validation = schemas.get(event.action)
         validation(event.payload)
 
@@ -96,14 +96,13 @@ def insert(req: Request, res: Response, ctx: Context):
 
         cursor.execute(f'''
             INSERT INTO
-                gists(event, subscriber, completed, timestamped)
+                gists(event, subscription, completed, timestamped)
             SELECT
-                {eventid[0]}, subscriber, 0, '{event.timestamped.isoformat()}'
-            FROM subscribers WHERE action = ?
+                {eventid[0]}, subscription, 0, '{event.timestamped.isoformat()}'
+            FROM subscriptions WHERE action = ?
         ''', (event.action,));
 
         db.commit()
-        import pdb; pdb.set_trace()
     except JsonSchemaException:
         return res.out(HTTPStatus.NOT_ACCEPTABLE, {'error': f'Event payload does not conform to {event.action} schema'})
     except Exception as exc:

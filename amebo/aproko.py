@@ -54,15 +54,15 @@ async def aproko(router: Router):
             cursor: Cursor = db.cursor()
             gists = cursor.execute(f'''
                 SELECT
-                    p.location || s.handler AS endpoint, e.payload, p.passphrase, g.rowid as gid
+                    a.address || s.handler AS endpoint, e.payload, a.passphrase, g.rowid as gid
                 FROM gists AS g JOIN events e ON
                     g.event = e.event
-                JOIN subscribers s ON
+                JOIN subscriptions s ON
                     s.subscription = g.subscription
-                JOIN actions a ON
-                    e.action = a.action
-                JOIN producers p ON
-                    s.producer = p.name
+                JOIN actions x ON
+                    e.action = x.action
+                JOIN applications a ON
+                    s.application = a.application
                 WHERE g.completed <> 1
                 ORDER BY g.event LIMIT {router.CONFIG('envelope_size')};
             ''').fetchall()
