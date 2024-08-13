@@ -10,7 +10,7 @@ class PostgresEngine(object):
     def pool(self):
         return self.__pool
 
-    async def create_microservice(self, microservice: str, endpoint: str, passphrase: str):
+    async def create_microservice(self, microservice: str, endpoint: str, secret: str):
         async with self.pool.acquire() as conn:
             await conn.execute("", [])
 
@@ -31,8 +31,8 @@ class LiteEngine(object):
     def __init__(self, *args):
         self.__conn = liteconnect(*args)
 
-    def create_microservice(self, microservice: str, endpoint: str, passphrase: str):
-        self.__redis.set(microservice, f'{endpoint} {passphrase}')
+    def create_microservice(self, microservice: str, endpoint: str, secret: str):
+        self.__redis.set(microservice, f'{endpoint} {secret}')
 
     def delete_microservice(self, microservice: str):
         self.__redis.delete(microservice)

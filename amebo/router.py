@@ -13,8 +13,8 @@ from amebo.utils.helpers import deterministic_uuid
 
 
 router = Application({
-    'env_loaded': load_dotenv(),
-    'db': environ.get('AMEBO_DATABASE') or 'sqlite',
+    'env_loaded': load_dotenv('amebo/amebo.env'),
+    'engine': environ.get('AMEBO_DATABASE') or 'sqlite',
     'envelope_size': int(environ.get('ENVELOPE_SIZE') or 256),  # how many tasks to fetch at once for processing
     'idles': 5,  # sleep for 5 seconds
     'rest_when': 0,  # reduce frequency of daemons when tasks less than 5
@@ -62,7 +62,7 @@ router.POST('/v1/actions', 'amebo.controllers.actions.insert')
 router.POST('/v1/events', 'amebo.controllers.events.insert')
 router.POST('/v1/applications', 'amebo.controllers.applications.insert')
 router.POST('/v1/subscriptions', 'amebo.controllers.subscriptions.insert')
-router.POST('/v1/gists/:id', 'amebo.controllers.gists.replay')
+router.POST('/v1/regists/:id', 'amebo.controllers.gists.replay')
 router.PUT('/v1/applications/:id', 'amebo.controllers.applications.update')
 
 # maybe add a route to clear cache of compiled schemas ?

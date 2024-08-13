@@ -1,17 +1,44 @@
-{% extends 'abase.axml' %} {% from 'actions.axml' import pagination %} {% set
-modal_name = 'Applications' %} {% macro commander() %} { isFilterable: false,
-nameSearch: '', addressSearch: '', whenFilter: '', filterResults(){ let base =
-`/v1/applications?pagination=${pagination}` if(this.nameSearch) base =
-`${base}&name=${this.nameSearch}` if(this.addressSearch) base =
-`${base}&address=${this.addressSearch}` if(this.whenFilter) base =
-`${base}&timeline=${this.whenFilter}` fetch(`${base}`) .then(response =>
-response.json()) .then(data => { isFiltering = true; applications = data;
-}).catch(err => { ShowFeedback('error', 'Filter operation failed...') }) },
-clearFilter(){ this.nameSearch = ''; this.addressSearch = ''; this.whenFilter =
-''; refreshPage(); }, checkDirty(){ if(this.nameSearch !== '' ||
-this.addressSearch !== '' || this.whenFilter !== '') { this.isFilterable = true;
-return true; } this.isFilterable = false; return false; } } {% endmacro %} {%
-block easel %}
+{% extends 'abase.axml' %}
+{% from 'actions.axml' import pagination %}
+{% set modal_name = 'Applications' %}
+
+{% macro commander() %}
+{
+    isFilterable: false,
+    nameSearch: '',
+    addressSearch: '',
+    whenFilter: '',
+    filterResults(){
+        let base = `/v1/applications?pagination=${pagination}`
+        if(this.nameSearch) base = `${base}&name=${this.nameSearch}`
+        if(this.addressSearch) base = `${base}&address=${this.addressSearch}`
+        if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
+        fetch(`${base}`)
+            .then(response => response.json())
+            .then(data => {
+                isFiltering = true;
+                applications = data;
+            }).catch(err => {
+                ShowFeedback('error', 'Filter operation failed...')
+            })
+        },
+        clearFilter(){
+            this.nameSearch = ''; this.addressSearch = '';
+            this.whenFilter = '';
+            refreshPage();
+        },
+        checkDirty(){
+            if(this.nameSearch !== '' || this.addressSearch !== '' || this.whenFilter !== '') {
+                this.isFilterable = true;
+                return true;
+            }
+            this.isFilterable = false;
+            return false;
+        }
+    }
+{% endmacro %}
+
+{% block easel %}
 <section x-data="{{ controller('applications') }}">
     <div class="px-3">
         <div><span class="font-800 pr-3">Filters:</span></div>
@@ -72,7 +99,7 @@ block easel %}
                     <tr>
                         <td x-text="application.application"></td>
                         <td x-text="application.address"></td>
-                        <td x-text="application.passphrase"></td>
+                        <td x-text="application.secret"></td>
                         <td x-text="application.timestamped"></td>
                     </tr>
                 </template>
@@ -87,17 +114,19 @@ block easel %}
         {{ pagination() }}
     </div>
 </section>
-{% endblock %} {% block wizard %}
+{% endblock %}
+
+{% block wizard %}
 <span
     x-data="{
     application: '',
     port: '',
     scheme: 'http',
     address: '',
-    passphrase: '',
+    secret: '',
     resetForm(){
         this.name = '';
-        this.passphrase = '';
+        this.secret = '';
         this.address = '';
     },
     get Address(){
@@ -109,7 +138,7 @@ block easel %}
         superpost('/v1/applications').send({
             application: this.application,
             address: this.Address,
-            passphrase: this.passphrase
+            secret: this.secret
         }).then(res => {
             supertoast('info', 'Application created');
             this.resetForm();
@@ -159,7 +188,7 @@ block easel %}
             <textarea
                 class="mw-40em text"
                 rows="10"
-                x-model="passphrase"
+                x-model="secret"
             ></textarea>
         </div>
     </div>

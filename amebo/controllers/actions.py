@@ -7,7 +7,7 @@ from orjson import dumps, loads
 
 from amebo.constants.literals import DB, MAX_PAGINATION
 from amebo.decorators.formatters import jsonify
-from amebo.decorators.providers import expects
+from amebo.decorators.providers import contextualize, expects
 from amebo.decorators.providers import cacheschema
 from amebo.models.actions import Action
 from amebo.utils.helpers import get_pagination, get_timeline
@@ -15,18 +15,21 @@ from amebo.utils.structs import Steps
 
 
 @jsonify
-def tabulate(req: Request, res: Response, ctx: Context):
+@contextualize
+async def tabulate(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     page, pagination = get_pagination(req)
     params = ['id', 'action', 'application', 'schemata', 'timeline']
     _id, _action, _application, _schemata, _timeline = [req.queries.get(p) for p in params]
 
-    steps = Steps()
+    steps = Steps(req.app._.engine)
+    executor = ctx.executor
+
     sqls = f'''
         SELECT
             rowid, action, application, schemata, timestamped
         FROM
-            actions
+            {executor.schema}actions
             {steps.EQUALS('rowid', _id)}
             {steps.LIKE('action', _action)}
             {steps.LIKE('application', _application)}
@@ -35,15 +38,11 @@ def tabulate(req: Request, res: Response, ctx: Context):
         LIMIT {pagination if pagination < MAX_PAGINATION else MAX_PAGINATION}
         OFFSET {(page - 1) * pagination};
     '''
-    try:
-        cursor = db.cursor()
-        rows = cursor.execute(sqls, steps.values).fetchall()
+    try: rows = await executor.fetch(2).execute(sqls, *steps.values)
     except Exception as exc:
-        res.status = HTTPStatus.OK
-        res.body = []
+        res.status = HTTPStatus.BAD_REQUEST
+        res.body = {'error': f'{exc}'}
         return
-    finally:
-        cursor.close()
 
     res.status = HTTPStatus.OK
     res.body = [{
@@ -57,35 +56,33 @@ def tabulate(req: Request, res: Response, ctx: Context):
 
 @jsonify
 @expects(Action)
-def insert(req: Request, res: Response, ctx: Context):
+@contextualize
+async def insert(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     action: Action = ctx.action
+    
+    steps = Steps(req.app._.engine)
+    executor = ctx.executor
 
     table = 'actions'
     fields = ('action', 'application', 'schemata', 'timestamped',)
-    values = (action.action, action.application, dumps(action.schemata), action.timestamped)
+    values = (action.action, action.application, dumps(action.schemata).decode(), action.timestamped.isoformat())
 
     try:
-        cursor: Cursor = db.cursor()
-        _application = cursor.execute(f'''
-            select application, passphrase from applications where application = ?
-        ''', (action.application,)).fetchone()
+        sqls = f'''select application, secret from {executor.schema}applications where application = {steps.next()}'''
+        _application = await executor.fetch(1).execute(sqls, action.application)
         if not _application:
             raise ValueError(f'Application {action.application} not found')
-        application, passphrase = _application
-        if(passphrase != action.passphrase):
-            return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'Incorrect {application} passphrase detected'})
-
-        cursor.execute(f'''
-            INSERT INTO {table}({', '.join(fields)}) VALUES(?, ?, ?, ?)
-        ''', values)
-        db.commit()
-    except Exception as exc:
-        res.status = HTTPStatus.UPGRADE_REQUIRED
-        res.body = {'error': f'{exc}'}
-        return
-    finally:
-        cursor.close()
+        application, secret = _application
+        if(secret != action.secret):
+            return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'Incorrect {application} secret detected'})
+    except Exception as exc: return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'{exc}'})
+    
+    try:
+        sqls = f'''INSERT INTO {executor.schema}{table}({', '.join(fields)}) VALUES ({steps.reset.next(4)})'''
+        print(sqls)
+        await executor.fetch(0).execute(sqls, *values)
+    except Exception as exc: return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
 
     ctx.keep('schemata', action.schemata)
     res.status = HTTPStatus.CREATED

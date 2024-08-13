@@ -1,13 +1,56 @@
 from functools import wraps
 from http import HTTPStatus
 from inspect import iscoroutinefunction
+from sqlite3 import Connection
 
+from asyncpg import Pool
 from fastjsonschema import compile
-from heaven import Context, Request, Response
+from heaven import App, Context, Request, Response
 from orjson import dumps, loads
 from pydantic import BaseModel
 
 from amebo.utils.structs import Lookup
+from amebo.constants.literals import DB
+
+
+class Executor(object):
+    def __init__(self, app: App):
+        self.app = app
+        self.engine = self.app._.engine
+        self.db = self.app._.db
+        self._fetching = 0
+
+    @property
+    def schema(self):
+        if self.engine == 'sqlite': return ''
+        return '_amebo_.'
+
+    def fetch(self, val: int):
+        self._fetching = val
+        return self
+
+    async def _pg(self, query: str, *args):
+        async with self.db.acquire() as conn:
+            async with conn.transaction():
+                if self._fetching == 1: return await conn.fetchrow(query, *args)
+                if self._fetching > 1: return await conn.fetch(query, *args)
+                else: return await conn.execute(query, *args)
+
+    async def _sqlite(self, query: str, *args: tuple):
+        cursor = self.db.cursor()
+        try:
+            if self._fetching == 1: return cursor.execute(query, args).fetchone()
+            if self._fetching > 1: return cursor.execute(query, args).fetchall()
+            else: return cursor.execute(query, args); self.db.commit()
+        except Exception as exc: raise exc
+        finally: cursor.close()
+
+    @property
+    def execute(self, *args, **kwargs):
+        async def acaller(*args, **kwargs):
+            if self.engine == 'sqlite': return await self._sqlite(*args, **kwargs)
+            return await self._pg(*args, **kwargs)
+        return acaller
 
 
 def cacheschema(func):
@@ -17,6 +60,15 @@ def cacheschema(func):
         else: func(req, res, ctx)
         if req.app._.schematas.get(ctx.schemata_name): pass
         else: req.app._.schematas[ctx.schemata_name] = compile(ctx.schemata)
+    return delegate
+
+
+def contextualize(func):
+    @wraps(func)
+    async def delegate(req: Request, res: Response, ctx: Context):
+        ctx.keep('executor', Executor(req.app))
+        if iscoroutinefunction(func): await func(req, res, ctx)
+        else: func(req, res, ctx)
     return delegate
 
 

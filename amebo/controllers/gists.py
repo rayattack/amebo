@@ -7,26 +7,29 @@ from orjson import loads
 
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.security import protected
+from amebo.decorators.providers import contextualize
 from amebo.constants.literals import DB, MAX_PAGINATION
 from amebo.utils.helpers import get_pagination, get_timeline
 from amebo.utils.structs import Steps
 
 
 @jsonify
-@protected
-def tabulate(req: Request, res: Response, ctx: Context):
+@contextualize
+async def tabulate(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     page, pagination = get_pagination(req)
     params = ['origin', 'destination', 'gist', 'event', 'completed', 'timeline']
-    _origin, _destination, _gist, _event, _completed, _timeline = [req.params.get(p) for p in params]
+    _origin, _destination, _gist, _event, _completed, _timeline = [req.queries.get(p) for p in params]
     _completed = _completed or 'all'
 
     completed = {'all': '', 'true': 1, 'false': 0}.get(_completed.lower())
 
-    steps = Steps()
+    steps = Steps(req.app._.engine)
+    executor = ctx.executor
     sqls = f'''
         SELECT
-            g.rowid as gist, e.producer as origin, a.event,
+            g.rowid as gist,
+            e.action as action,
             case when
                 g.completed <> 0
             then
@@ -35,84 +38,77 @@ def tabulate(req: Request, res: Response, ctx: Context):
                 'False'
             end as
                 completed,
-            g.timestamped, a.payload, p.name as destination
-        FROM gists AS g JOIN actions a ON
-            g.action = a.action
-        JOIN subscribers s ON
-            s.subscriber = g.subscriber
-        JOIN events e ON
-            a.event = e.event
-        JOIN producers p ON
-            s.producer = p.name
-        {steps.EQUALS(_gist, 'g.rowid')}
-        {steps.LIKE(_origin, 'e.producer')}
-        {steps.EQUALS(completed, 'g.completed')}
-        {steps.LIKE(_event, 'a.event')}
-        {steps.LIKE(_destination, 'p.name')}
+            x.application as publisher,
+            s.application as subscriber,
+            g.timestamped
+        FROM {executor.schema}gists AS g JOIN {executor.schema}events e ON
+            g.event = e.event
+        JOIN {executor.schema}subscriptions s ON
+            g.subscription = s.subscription
+        JOIN {executor.schema}actions x ON
+            s.action = x.action
+        {steps.EQUALS('g.rowid', _gist)}
+        {steps.LIKE('e.producer', _origin)}
+        {steps.EQUALS('g.completed', completed)}
+        {steps.LIKE('a.event', _event)}
+        {steps.LIKE('p.name', _destination)}
         {get_timeline(_timeline, steps, column='g.timestamped')}
-        ORDER BY g.rowid 
+        ORDER BY g.rowid
         LIMIT {pagination if pagination < MAX_PAGINATION else MAX_PAGINATION}
         OFFSET {(page - 1) * pagination};
     '''
     try:
-        cursor = db.cursor()
-        rows = cursor.execute(sqls, steps.values).fetchall()
+        rows = await executor.fetch(2).execute(sqls, *steps.values)
     except Exception as exc:
+        print('exc is: ', exc)
         res.status = HTTPStatus.BAD_REQUEST
         res.body = {'error': f'{exc}'}
         return
-    finally:
-        cursor.close()
 
     res.status = HTTPStatus.OK
     res.body = [{
         'gist': gist,
-        'origin': origin,
-        'event': event,
+        'action': action,
         'completed': completed,
-        'timestamped': timestamped,
-        'payload': loads(payload),
-        'destination': destination
-    } for gist, origin, event, completed, timestamped, payload, destination in rows]
+        'publisher': publisher,
+        'subscriber': subscriber,
+        'timestamped': timestamped
+    } for gist, action, completed, publisher, subscriber, timestamped in rows]
 
 
 @jsonify
+@contextualize
 async def replay(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     id = req.params.get('id')
+    
+    steps = Steps(req.app._.engine)
+    executor = ctx.executor
 
     try:
-        cursor = db.cursor()
-        gist = cursor.execute(f'''
+        gist = await executor.fetch(1).execute(f'''
             SELECT
-                m.location || s.endpoint AS endpoint, a.payload, m.passphrase, g.rowid as gid
-            FROM gists AS g JOIN actions a ON
-                g.action = a.action
-            JOIN subscribers s ON
-                s.subscriber = g.subscriber
+                s.handler AS endpoint, e.payload, a.secret, g.rowid as gid
+            FROM gists AS g JOIN subscriptions s ON
+                g.subscription = s.subscription
             JOIN events e ON
-                a.event = e.event
-            JOIN producers p ON
-                s.producer = p.name
-            WHERE g.rowid = ?;
-        ''', (id,)).fetchone()
+                g.event = e.event
+            JOIN applications a ON
+                s.application = a.application
+            WHERE g.rowid = {steps.next()};
+        ''', (id,))
     except Exception as exc:
         res.status = HTTPStatus.BAD_REQUEST
         res.body = {'error': f'{exc}'}
         return
-    finally:
-        cursor.close()
-    
-    if not gist:
-        res.status = HTTPStatus.NOT_FOUND
-        res.body = {}
-        return
+
+    if not gist: return res.out(HTTPStatus.NOT_FOUND, {'error': 'Gist not found'})
 
     try:
         sender = AsyncClient()
 
-        endpoint, payload, passphrase, gid = gist
-        headers = {'content-type': 'application/json', 'x-pass-phrase': passphrase}
+        endpoint, payload, secret, gid = gist
+        headers = {'content-type': 'application/json', 'x-pass-phrase': secret}
 
         response = await sender.post(endpoint, json=loads(payload), headers=headers)
         if response.status_code not in [HTTPStatus.ACCEPTED, HTTPStatus.OK]:

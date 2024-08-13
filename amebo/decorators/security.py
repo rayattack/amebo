@@ -13,8 +13,8 @@ async def authenticate(req: Request, res: Response, ctx: Context):
         res.headers = 'Location', '/'
         return res.out(HTTPStatus.TEMPORARY_REDIRECT, None)
 
-    # TODO: remove passphrase from ui and use withCredentials as we use the cookie to get it from the tokens cache
-    #TODO: Change checking for passphrase in handlers to checking for producer name as authorization and identification is done here
+    # TODO: remove secret from ui and use withCredentials as we use the cookie to get it from the tokens cache
+    #TODO: Change checking for secret in handlers to checking for producer name as authorization and identification is done here
     authentication = req.cookies.get('authentication')
     if not authentication: return leave()
 
@@ -59,8 +59,8 @@ def protected(func):
             res.headers = 'Location', '/'
             return res.out(HTTPStatus.TEMPORARY_REDIRECT, None)
 
-        # TODO: remove passphrase from ui and use withCredentials as we use the cookie to get it from the tokens cache
-        #TODO: Change checking for passphrase in handlers to checking for producer name as authorization and identification is done here
+        # TODO: remove secret from ui and use withCredentials as we use the cookie to get it from the tokens cache
+        #TODO: Change checking for secret in handlers to checking for producer name as authorization and identification is done here
         authentication = req.cookies.get('authentication')
         if not authentication: return leave()
 

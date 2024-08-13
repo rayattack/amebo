@@ -9,74 +9,70 @@ from orjson import loads
 
 # src code
 from amebo.constants.literals import DB
+from amebo.decorators.providers import Executor
 
 
 async def aproko(router: Router):
-    db: Connection = router.peek(DB)
+    executor = Executor(router)
+    x = executor.schema
     accepters = []
     rejecters = []
-    async def notify(endpoint: str, data: dict, passphrase: str, gist_id: int):
+    async def notify(endpoint: str, data: dict, secret: str, gist_id: int):
         headers = {
             'Content-Type': 'application/json',
-            'X-PASS-Phrase': passphrase
+            'X-PASS-Phrase': secret
         }
 
         try:
             client = AsyncClient()
             result = await client.post(endpoint, json=data, headers=headers)
-            if result.status_code not in [HTTPStatus.ACCEPTED, HTTPStatus.OK]:
-                rejecters.append(int(gist_id))
-            else:
-                accepters.append(int(gist_id))
+            if result.status_code not in [HTTPStatus.ACCEPTED, HTTPStatus.OK]: rejecters.append(int(gist_id))
+            else: accepters.append(int(gist_id))
         except Exception as exc:
+            print('Exception occured@@@@@@@@@@@@@@@@@@@@@@@@@: ', exc, ' ', endpoint)
             rejecters.append(gist_id)
         finally:
             await client.aclose()
 
         try:
-            cursor: Cursor = db.cursor()
-            cursor.execute(f'''
-                UPDATE
-                    gists
-                SET
-                    completed = 1
-                WHERE rowid IN {format(tuple(accepters)).replace( ',)', ')' )};
-            ''')
-            db.commit()
-        except Exception as exc:
-            print('Could not update in notify: ', exc)
-        finally:
-            cursor.close()
+            rejections = str(tuple(rejecters)).replace(',)', ')')
+            sqls = f'''
+                UPDATE {x}gists SET retries = retries + 1 WHERE rowid IN {rejections};
+            '''
+            if rejecters: await executor.fetch(0).execute(sqls)
+        except Exception as exc: print('Could not negate in notify: ', exc)
+
+        try:
+            acceptances = str(tuple(accepters)).replace(',)', ')')
+            sqls = f'''
+                UPDATE {x}gists SET completed = 1, retries = retries + 1 WHERE rowid IN {acceptances};
+            '''
+            if accepters: await executor.fetch(0).execute(sqls)
+        except Exception as exc: print('Could not update in notify: ', exc)
 
     async def traverse():
-        cursor = None
         try:
-            cursor: Cursor = db.cursor()
-            gists = cursor.execute(f'''
+            gists = await executor.fetch(2).execute(f'''
                 SELECT
-                    a.address || s.handler AS endpoint, e.payload, a.passphrase, g.rowid as gid
-                FROM gists AS g JOIN events e ON
+                    s.handler AS endpoint, e.payload, a.secret, g.rowid as gid
+                FROM {x}gists AS g JOIN {x}events e ON
                     g.event = e.event
-                JOIN subscriptions s ON
+                JOIN {x}subscriptions s ON
                     s.subscription = g.subscription
-                JOIN actions x ON
+                JOIN {x}actions x ON
                     e.action = x.action
-                JOIN applications a ON
+                JOIN {x}applications a ON
                     s.application = a.application
                 WHERE g.completed <> 1
+                AND g.retries < s.max_retries
                 ORDER BY g.event LIMIT {router.CONFIG('envelope_size')};
-            ''').fetchall()
+            ''')
 
             if len(gists) < router.CONFIG('rest_when'): await sleep(router.CONFIG('idles'))
-            await gather(*[notify(endpoint, loads(payload), passphrase, gid) for endpoint, payload, passphrase, gid in gists])
-
-            db.commit()
-        except Exception as exc:
-            print('Exception occured: ', exc)
-        finally:
-            if cursor: cursor.close()
-
+            await gather(*[notify(endpoint, loads(payload), secret, gid) for endpoint, payload, secret, gid in gists])
+        except Exception as exc: print('Exception occured: ', exc)
     await traverse()
+    return True
 
 
 def cli():

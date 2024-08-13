@@ -11,7 +11,7 @@ class Action(Model):
     action: str
     application: str
     schemata: Union[dict, str]
-    passphrase: str
+    secret: str
     timestamped: datetime = Field(default_factory=datetime.now)
 
     @classmethod

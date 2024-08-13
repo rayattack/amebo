@@ -44,7 +44,7 @@
     },
 
     checkDirty(){
-        if(this.originSearch !== '' || 
+        if(this.originSearch !== '' ||
             this.completedFilter !== 'all' ||
             this.destinationSearch !== '' ||
             this.gistSearch !== '' ||
@@ -96,23 +96,23 @@
         <table class="table is-striped is-fullwidth is-hoverable paginated">
             <thead>
                 <th style="width: 3%">#</th>
-                <th>Origin</th>
-                <th style="width: 10%">Completed</th>
-                <th>Destination</th>
-                <th style="width: 5%">Gist</th>
-                <th>Event</th>
-                <th>Timestamped</th>
-                <th style="width: 7%">Resend</th>
+                <th style="width: 5%">Sent</th>
+                <th>Action</th>
+                <th>Publisher</th>
+                <th>Subscriber</th>
+                <th>Endpoint</th>
+                <th>Timestamp</th>
+                <th style="width: 5%">Resend</th>
             </thead>
             <tbody x-init="() => { calculateHeight($el, 100); }">
                 <template x-for="gist, tally in gists" :key="gist.gist">
                     <tr>
-                        <td x-text="tally + 1 + (pagination * (page - 1))" style="width: 3%"></td>
-                        <td x-text="gist.origin"></td>
-                        <td x-text="gist.completed" style="width: 10%"></td>
-                        <td x-text="gist.destination"></td>
-                        <td x-text="gist.gist" style="width: 5%"></td>
-                        <td x-text="gist.event"></td>
+                        <td x-text="gist.gist" style="width: 3%"></td>
+                        <td x-text="gist.completed" style="width: 5%"></td>
+                        <td x-text="gist.action"></td>
+                        <td x-text="gist.publisher"></td>
+                        <td x-text="gist.subscriber"></td>
+                        <td x-text="gist.endpoint"></td>
                         <td x-text="gist.timestamped"></td>
                         <td x-data="{{ resendable() }}" style="width: 5%">
                             <button title="Resend This Gist"
@@ -127,13 +127,13 @@
             <tfoot style="position: sticky; bottom: 0">
                 <tr>
                     <th style="width: 3%">#</th>
-                    <th>Origin</th>
-                    <th style="width: 10%">Completed</th>
-                    <th>Destination</th>
-                    <th style="width: 5%">Gist</th>
-                    <th>Event</th>
-                    <th>Timestamped</th>
-                    <th style="width: 7%">Resend</th>
+                    <th style="width: 5%">Sent</th>
+                    <th>Action</th>
+                    <th>Publisher</th>
+                    <th>Subscriber</th>
+                    <th>Endpoint</th>
+                    <th>Timestamp</th>
+                    <th style="width: 5%">Resend</th>
                 </tr>
             </tfoot>
         </table>

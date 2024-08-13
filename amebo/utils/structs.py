@@ -19,18 +19,31 @@ class Lookup(object):
 
 
 class Steps(object):
-    def __init__(self):
+    def __init__(self, engine = 'sqlite'):
         self._first = None
         self._values = []
         self._misses = []
+        self._counter = 0
+        self.engine = engine
+    
+    @property
+    def reset(self):
+        self._counter = 0
+        return self
+
+    def next(self, count: int = 1) -> str:
+        if self.engine == 'sqlite': return ', '.join(['?' for _ in range(count)])
+
+        self._counter += 1
+        return ', '.join([f'${i}' for i in range(self._counter, self._counter + (1 * count))])
 
     def EQUALS(self, key: str, datum: any):
         # necessary as sqlite uses 0 a falsy value for false
         if(datum == 0 or datum):
             if(self.dirty):
-                sqls = f'AND {key} = ?'
+                sqls = f'AND {key} = {self.next()}'
             else:
-                sqls = f'WHERE {key} = ?'
+                sqls = f'WHERE {key} = {self.next()}'
             self._values.append(datum)
             return sqls
         return ''
@@ -38,9 +51,9 @@ class Steps(object):
     def LIKE(self, key: str, datum: any):
         if(datum):
             if(self.dirty):
-                sqls = f'AND {key} LIKE ?'
+                sqls = f'AND {key} LIKE {self.next()}'
             else:
-                sqls = f'WHERE {key} LIKE ?'
+                sqls = f'WHERE {key} LIKE {self.next()}'
             self._values.append(f'%{datum}%')
             return sqls
         return ''

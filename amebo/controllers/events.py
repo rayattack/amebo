@@ -7,24 +7,27 @@ from orjson import dumps, loads
 
 from amebo.constants.literals import DB, MAX_PAGINATION
 from amebo.decorators.formatters import jsonify
-from amebo.decorators.providers import expects
+from amebo.decorators.providers import contextualize, expects
 from amebo.models.events import Events
 from amebo.utils.helpers import get_pagination, get_timeline
 from amebo.utils.structs import Steps
 
 
 @jsonify
-def tabulate(req: Request, res: Response, _: Context):
+@contextualize
+async def tabulate(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     page, pagination = get_pagination(req)
 
     params = ['id', 'action', 'deduper', 'payload', 'timeline']
     _id, _action,  _deduper, _payload, _timeline = [req.queries.get(p) for p in params]
 
-    steps = Steps()
+    steps = Steps(req.app._.engine)
+    executor = ctx.executor
+
     sqls = f'''SELECT
             event, action, payload, deduper, timestamped, COUNT(*) AS results
-        FROM events
+        FROM {executor.schema}events
             {steps.EQUALS('event', _id)}
             {steps.LIKE('action', _action)}
             {steps.LIKE('payload', _payload)}
@@ -35,15 +38,9 @@ def tabulate(req: Request, res: Response, _: Context):
         LIMIT {pagination if pagination < MAX_PAGINATION else MAX_PAGINATION}
         OFFSET {(page - 1) * pagination};
     '''
-    try:
-        cursor = db.cursor()
-        rows = cursor.execute(sqls, steps.values).fetchall()
+    try: rows = await executor.fetch(2).execute(sqls, *steps.values)
     except Exception as exc:
-        res.status = HTTPStatus.BAD_REQUEST
-        res.body = []
-        return
-    finally:
-        cursor.close()
+        return res.out(HTTPStatus.BAD_REQUEST, [])
 
     res.status = HTTPStatus.OK
     res.body = [{
@@ -57,26 +54,25 @@ def tabulate(req: Request, res: Response, _: Context):
 
 @jsonify
 @expects(Events)
-def insert(req: Request, res: Response, ctx: Context):
+@contextualize
+async def insert(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     event: Events = ctx.events
 
+    steps = Steps(req.app._.engine)
     try:
-        cursor = db.cursor()
-        row = cursor.execute('''
+        executor = ctx.executor
+        sqls = f'''
             SELECT
-                schemata, actions.application, app.passphrase
+                schemata, actions.application, app.secret
             FROM
-                actions
-            JOIN applications app ON app.application = actions.application
+                {executor.schema}actions
+            JOIN {executor.schema}applications app ON app.application = actions.application
             WHERE
-                action = ?
-        ''', (event.action,)).fetchone()
-
-        if not row:
-            res.status = HTTPStatus.UNPROCESSABLE_ENTITY
-            res.body = {'error': 'Action can not be used to process any events'}
-            return
+                action = {steps.next()}
+        '''
+        row = await executor.fetch(1).execute(sqls, event.action)
+        if not row: return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, {'error': 'Action can not be used to process any events'})
 
         schemata = loads(row[0])  # load the schemata from the db
         schemas = req.app.peek('schematas')  # get the compiled schematas
@@ -84,32 +80,26 @@ def insert(req: Request, res: Response, ctx: Context):
         validation = schemas.get(event.action)
         validation(event.payload)
 
-        table = 'events'
+        table = f'{executor.schema}events'
         fields = ['action', 'payload', 'deduper', 'timestamped',]
-        values = [event.action, dumps(event.payload).decode(), event.deduper, event.timestamped]
+        values = [event.action, dumps(event.payload).decode(), event.deduper, event.timestamped.isoformat()]
 
-        eventid = cursor.execute(f'''
+        sqls = f'''INSERT INTO {table} ({', '.join(fields)}) VALUES ({steps.reset.next(4)}) RETURNING rowid;'''
+        eventid = await executor.fetch(1).execute(sqls, *values)
+    
+        sqls = f'''
             INSERT INTO
-                {table} ({', '.join(fields)})
-            VALUES(?, ?, ?, ?) RETURNING rowid;
-        ''', values).fetchone()
-
-        cursor.execute(f'''
-            INSERT INTO
-                gists(event, subscription, completed, timestamped)
+                {executor.schema}gists(event, subscription, completed, retries, timestamped)
             SELECT
-                {eventid[0]}, subscription, 0, '{event.timestamped.isoformat()}'
-            FROM subscriptions WHERE action = ?
-        ''', (event.action,));
-
-        db.commit()
+                {eventid[0]}, subscription, 0, 0, '{event.timestamped.isoformat()}'
+            FROM {executor.schema}subscriptions WHERE action = {steps.reset.next()}
+        '''
+        await executor.fetch(0).execute(sqls, event.action)
     except JsonSchemaException:
         return res.out(HTTPStatus.NOT_ACCEPTABLE, {'error': f'Event payload does not conform to {event.action} schema'})
     except Exception as exc:
         res.status = HTTPStatus.UPGRADE_REQUIRED
         return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
-    finally:
-        cursor.close()
 
     res.status = HTTPStatus.CREATED
     res.body = {

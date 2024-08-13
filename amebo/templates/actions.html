@@ -160,7 +160,7 @@
     application: '',
     schema: '',
     action: '',
-    passphrase: '',
+    secret: '',
     fetchApplications(){
         fetch('/v1/applications', {
             method: 'GET'
@@ -174,7 +174,7 @@
     },
     resetForm(){
         this.application = '';
-        this.passphrase = '';
+        this.secret = '';
         this.action = '';
         this.schema = '';
     },
@@ -182,7 +182,7 @@
         superpost('/v1/actions').send({
             application: this.application,
             schemata: this.ide.getValue(),
-            passphrase: this.passphrase,
+            secret: this.secret,
             action: this.action
         }).then(res => {
             ShowFeedback('info', 'Action created')
@@ -211,11 +211,11 @@
             </div>
         </div>
         <div class="brick vertical-aligns-middle">
-            <label class="font-800 mr-2">Passphrase: </label>
+            <label class="font-800 mr-2">secret: </label>
             <div class="control display-inline-block has-icons-right" x-data="{
                 visible: false
             }">
-                <input :type="visible ? 'text' : 'password'" class="w-30em input" placeholder="Enter passphrase for application..." x-model="passphrase">
+                <input :type="visible ? 'text' : 'password'" class="w-30em input" placeholder="Enter secret for application..." x-model="secret">
                 <span class="icon is-right" @click="visible = !visible">
                     <img :src="`/public/icons/${visible ? 'eye' : 'neye'}.svg`" class="pointer-events-all"></img>
                 </span>

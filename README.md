@@ -81,10 +81,10 @@ ambeo -w 2 -a 0.0.0.0:8701
     "type": "object",
     "properties": {
         "application": {"type": "string"},
-        "passphrase": {"type": "string"},
+        "secret": {"type": "string"},
         "address": {"type": "web", "format": "ipv4 | ipv6 | hostname | idn-hostname"}
     },
-    "required": ["application", "passphrase", "address"]
+    "required": ["application", "secret", "address"]
 }
 ```
 
@@ -94,7 +94,7 @@ ambeo -w 2 -a 0.0.0.0:8701
 ```json
 {
     "application": "customers",
-    "passphrase": "some-super-duper-secret-of-the-module-or-application-or-microservice",
+    "secret": "some-super-duper-secret-of-the-module-or-application-or-microservice",
     "address": "http://0.0.0.0:3310"
 }
 ```
@@ -199,7 +199,7 @@ ambeo -w 2 -a 0.0.0.0:8701
         },
         "location": {"type": "web"}
     },
-    "required": ["application", "passphrase", "location"]
+    "required": ["application", "secret", "location"]
 }
 ```
 
@@ -220,7 +220,7 @@ ambeo -w 2 -a 0.0.0.0:8701
             "schemata": {"type": "string", "format": "ipv4 | ipv6 | hostname | idn-hostname"},
             "location": {"type": "web"}
         },
-        "required": ["application", "passphrase", "location"]
+        "required": ["application", "secret", "location"]
     },
     "location": "http://0.0.0.0:3300"
 }
@@ -251,7 +251,7 @@ developers to search for events by application(s) with commensurate schema (i.e.
 
 1. Topic management is simplified as actions with versioning support baked in
 
-1. Infinite retries (stop after $MAX_RETRIES and $MAX_MINUTES coming soon)
+1. Infinite retries (stop after $MAX_MINUTES coming soon) EDITED: Stop after $MAX_RETRIES implemented
 
 
 # Trivia

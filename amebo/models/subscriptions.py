@@ -10,12 +10,19 @@ from amebo.models.actions import Action
 
 
 class Subscriptions(Model):
-    subscription: Optional[int]
-    action: str
+    subscription: Optional[int] = None
     application: str
+    action: str
     handler: str
-    description: str
+    secret: str
+    max_retries: int = Field(le=10_000, ge=1)
     timestamped: datetime = Field(default_factory=datetime.now)
+
+    @field_validator('handler')
+    @classmethod
+    def _handler(cls, val: str):
+        if not val.startswith('/'): raise ValueError('Subscription handlers must start with a leading `/`')
+        return val
 
 
 class Gists(Model):

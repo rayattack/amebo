@@ -18,7 +18,7 @@ class Credential(Model):
 class Application(Model):
     application: str = Field(min_length=1)
     address: AnyHttpUrl
-    passphrase: str = Field(min_length=16)
+    secret: str = Field(min_length=16)
     timestamped: datetime = Field(default_factory=datetime.now)
 
     @classmethod
@@ -35,9 +35,9 @@ class Application(Model):
 
 class Location(Model):
     location: AnyHttpUrl
-    passphrase: str
+    secret: str
 
 
 class Token(Model):
-    passphrase: str
+    secret: str
     microservice: str

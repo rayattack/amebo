@@ -13,7 +13,7 @@ Content-Type: application/json
 {
     "name": "customers",
     "location": "http://locahost:8000",
-    "passphrase": "secretkeypleaseecret"
+    "secret": "secretkeypleaseecret"
 }
 
 ###
@@ -98,5 +98,5 @@ Content-Type: {{appjson}}
 
 {
     "location": "http://0.0.0.0:8000",
-    "passphrase": "secretkeypleaseecret"
+    "secret": "secretkeypleaseecret"
 }

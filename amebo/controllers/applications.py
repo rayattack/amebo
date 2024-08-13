@@ -1,4 +1,5 @@
 from http import HTTPStatus
+from inspect import iscoroutinefunction
 from sqlite3 import Connection, Cursor, IntegrityError
 
 # installed libs
@@ -7,7 +8,7 @@ from heaven import Context, Request, Response
 # src code
 from amebo.constants.literals import DB, AMEBO_SECRET_KEY, MAX_PAGINATION
 from amebo.decorators.formatters import jsonify
-from amebo.decorators.providers import expects
+from amebo.decorators.providers import contextualize, expects
 from amebo.utils.helpers import get_pagination, get_timeline, tokenize
 
 from amebo.models.applications import Credential, Location, Application, Token
@@ -30,7 +31,7 @@ def authenticate(req: Request, res: Response, ctx: Context):
     if credential.scheme == 'token':
         table = 'microservices'
         username_field = 'microservice'
-        password_field = 'passphrase'
+        password_field = 'secret'
 
     try:
         cursor: Cursor = db.cursor()
@@ -59,52 +60,51 @@ def authenticate(req: Request, res: Response, ctx: Context):
 
 
 @jsonify
-def tabulate(req: Request, res: Response, ctx: Context):
+@contextualize
+async def tabulate(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     page, pagination = get_pagination(req)
     params = ['application', 'address', 'timeline']
     _application, _address, _timeline = [req.queries.get(p) for p in params]
-    steps = Steps()
+    steps = Steps(req.app._.engine)
+
+    executor = ctx.executor
 
     sqls = f'''SELECT application, address, timestamped
-        FROM applications
+        FROM {executor.schema}applications
             {steps.LIKE('application', _application)}
             {steps.LIKE('address', _address)}
             {get_timeline(_timeline, steps)}
         LIMIT {pagination if pagination < MAX_PAGINATION else MAX_PAGINATION}
         OFFSET {(page - 1) * pagination};
     '''
-    try:
-        cursor = db.cursor()
-        rows = cursor.execute(sqls, steps.values).fetchall()
-    except KeyError as exc:
+    try: rows = await executor.fetch(2).execute(sqls, *steps.values)
+    except Exception as exc:
         res.status = HTTPStatus.BAD_REQUEST
         res.body = {'error': f'{exc}'}
         return
-    finally:
-        if cursor: cursor.close()
 
     res.status = HTTPStatus.OK
     res.body = [{
         'application': application,
         'address': address,
-        'passphrase': '****************',
+        'secret': '****************',
         'timestamped': timestamped
     } for application, address, timestamped in rows]
 
 
 @jsonify
 @expects(Application)
-def insert(req: Request, res: Response, ctx: Context):
-    db: Connection = req.app.peek(DB)
+@contextualize
+async def insert(req: Request, res: Response, ctx: Context):
     application: Application = ctx.application
+    steps = Steps(req.app._.engine)
     try:
-        cursor = db.cursor()
-        values = (application.application, str(application.address), application.passphrase, application.timestamped)
-        cursor.execute('''
-            INSERT into applications(application, address, passphrase, timestamped) VALUES (?, ?, ?, ?)
-        ''', values)
-        db.commit()
+        executor = ctx.executor
+        values = (str(application.application), str(application.address), application.secret, application.timestamped.isoformat())
+        sqls = f'''INSERT INTO {executor.schema}applications(application, address, secret, timestamped) VALUES ({steps.next(4)})'''
+        print(sqls)
+        await executor.execute(sqls, *values)
     except IntegrityError as exc:
         res.status = HTTPStatus.CONFLICT
         res.body = {'error': f'{exc}'}
@@ -113,31 +113,31 @@ def insert(req: Request, res: Response, ctx: Context):
         res.status = HTTPStatus.NOT_ACCEPTABLE
         res.body = {'error': f'{exc}'}
         return
-    finally:
-        cursor.close()
 
     res.status = HTTPStatus.CREATED
     res.body = {
         'name': application.application,
         'address': str(application.address),
-        'passphrase': application.passphrase,
+        'secret': application.secret,
         'timestamped': application.timestamped
     }
 
 
 @jsonify
 @expects(Location)
+@contextualize
 def update(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     application = req.params.get('id')
     location: Location = ctx.location
 
+    executor = ctx.executor()
     try:
         cursor = db.cursor()
         cursor.execute(f'''
-            UPDATE applications SET address = ?
-                WHERE application = ? AND passphrase = ?
-        ''', (location.location, application, location.passphrase))
+            UPDATE applications SET address = {executor.next()}
+                WHERE application = {executor.next()} AND secret = {executor.next()}
+        ''', (location.location, application, location.secret))
     except Exception as exc:
         res.status = HTTPStatus.BAD_REQUEST
         res.body = {'error': 'could not update application'}
@@ -160,7 +160,7 @@ def tokens(req: Request, res: Response, ctx: Context):
     try:
         cursor = db.cursor()
         cursor.execute(f'''
-            SELECT application, passphrase FROM applications WHERE application = ?
+            SELECT application, secret FROM applications WHERE application = ?
         ''', (token.application)).fetchall()
     except Exception as exc:
         res.status = HTTPStatus.BAD_REQUEST
