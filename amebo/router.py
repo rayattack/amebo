@@ -13,7 +13,6 @@ from amebo.utils.helpers import deterministic_uuid
 
 
 router = Application({
-    'env_loaded': load_dotenv('amebo/amebo.env'),
     'engine': environ.get('AMEBO_DATABASE') or 'sqlite',
     'envelope_size': int(environ.get('ENVELOPE_SIZE') or 256),  # how many tasks to fetch at once for processing
     'idles': 5,  # sleep for 5 seconds

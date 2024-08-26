@@ -41,6 +41,7 @@ SET search_path TO _amebo_;
         application text NOT NULL references applications(application),  -- subscribing app i.e. producer
         action text NOT NULL references actions(action),
         max_retries integer not null default 3,
+        cron_interval text NOT NULL,
         handler text NOT NULL,
         description text,
         timestamped text NOT NULL,
