@@ -1,0 +1,61 @@
+POST http://local.localhost:3310/v1/applications HTTP/1.1
+content-type: application/json
+
+{
+    "application": "hub",
+    "address": "http://api.local.localhost:1986",
+    "secret": "sometime-sometime"
+}
+
+###
+
+
+POST http://local.localhost:3310/v1/actions HTTP/1.1
+content-type: application/json
+
+{
+    "action": "hub.posts.created.v1",
+    "application": "hub",
+    "secret": "sometime-sometime",
+    "schemata": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "title": {"type": "string"},
+            "content": {"type": "string"}
+        },
+        "additionalProperties": false
+    }
+}
+
+
+###
+
+POST http://local.localhost:3310/v1/events HTTP/1.1
+content-type: application/json
+
+{
+    "action": "hub.posts.created.v1",
+    "deduper": "1234567893",
+    "secret": "sometime-sometime",
+    "payload": {
+        "id": "1234567890",
+        "title": "Hello World",
+        "content": "This is a test post"
+    }
+}
+
+
+###
+
+
+POST http://local.localhost:3310/v1/subscriptions HTTP/1.1
+content-type: application/json
+
+{
+    "application": "hub",
+    "secret": "sometime-sometime",
+    "action": "hub.posts.created.v1",
+    "handler": "/h1/post-handlerss",
+    "max_retries": 1000
+}
