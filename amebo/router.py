@@ -13,7 +13,7 @@ from amebo.utils.helpers import deterministic_uuid
 
 
 router = Application({
-    'engine': environ.get('AMEBO_DATABASE') or 'sqlite',
+    'engine': environ.get('AMEBO_ENGINE') or 'sqlite',
     'envelope_size': int(environ.get('ENVELOPE_SIZE') or 256),  # how many tasks to fetch at once for processing
     'idles': 5,  # sleep for 5 seconds
     'rest_when': 0,  # reduce frequency of daemons when tasks less than 5
@@ -33,6 +33,7 @@ router.ON(STARTUP, 'amebo.middlewares.database.cache')
 router.ON(SHUTDOWN, 'amebo.middlewares.database.disconnect')
 router.ON(STARTUP, 'amebo.middlewares.database.initialize')
 router.ON(STARTUP, 'amebo.middlewares.security.upsudo')
+router.ON(STARTUP, 'amebo.middlewares.security.upsecret')
 
 
 # hooks
