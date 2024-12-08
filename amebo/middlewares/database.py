@@ -37,7 +37,8 @@ async def disconnect(app: Application):
 
 async def initialize(app: Application):
     """todo: enable switching db backend between redis, pg, sqlite"""
-    if app._.engine == 'postgres': await app.peek(DB).execute(pgscript)
+    if app._.engine == 'postgres':
+        await app.peek(DB).execute(pgscript)
     else:
         try:
             db: Connection = app.peek(DB)

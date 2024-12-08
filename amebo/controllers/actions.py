@@ -87,3 +87,4 @@ async def insert(req: Request, res: Response, ctx: Context):
     ctx.keep('schemata', action.schemata)
     res.status = HTTPStatus.CREATED
     res.body = action.model_dump()
+

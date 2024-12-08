@@ -52,3 +52,4 @@ def untokenize(token, sk):
 def deterministic_uuid():
     null = UUID("00000000-0000-0000-0000-000000000000")
     return uuid5(null, name = str(getnode())).hex
+

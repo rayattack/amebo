@@ -3,6 +3,7 @@ from inspect import iscoroutinefunction
 from sqlite3 import Connection, Cursor, IntegrityError
 
 # installed libs
+from bcrypt import checkpw
 from heaven import Context, Request, Response
 
 # src code
@@ -17,43 +18,43 @@ from amebo.utils.structs import Steps
 
 @jsonify
 @expects(Credential)
-def authenticate(req: Request, res: Response, ctx: Context):
+@contextualize
+async def authenticate(req: Request, res: Response, ctx: Context):
     def unauthorized():
         res.status = HTTPStatus.UNAUTHORIZED
         res.body = {'error': 'could not authenticate microservice'}
 
     db: Connection = req.app.peek(DB)
     credential: Credential = ctx.credential
+    executor = ctx.executor
 
     table = 'credentials'
     username_field = 'username'
     password_field = 'password'
     if credential.scheme == 'token':
-        table = 'microservices'
-        username_field = 'microservice'
+        table = 'applications'
+        username_field = 'application'
         password_field = 'secret'
 
     try:
-        cursor: Cursor = db.cursor()
-        row = cursor.execute(f'''
-            SELECT {username_field}, {password_field} FROM {table}
-                WHERE {username_field} = ?
-        ''', (credential.username,))
+        SQL = f'''
+            SELECT {username_field}, {password_field} FROM {executor.schema}{table}
+                WHERE {username_field} = {executor.esc(1)}
+        '''
+        print(SQL, credential.username)
+        row = await executor.fetch(1).execute(SQL, (credential.username))
     except Exception as exc:
         return unauthorized()
-    else: data = row.fetchone()
-    finally: cursor.close()
 
-    if not data: return unauthorized()
-
-    username, password = data
-    if password != credential.password: return unauthorized()
-    # no feedback if provided if secret key mismatches i.e. continue indicates just that
+    if not row: return unauthorized()
+    username, password = row
+    if not checkpw(credential.password.encode(), password.encode()): return unauthorized()
+    # no feedback is provided if secret key mismatches i.e. continue indicates just that
 
     token = tokenize({
         'scheme': credential.scheme,
         'username': username,
-    }, req.app.CONFIG(req.app._.AMEBO_SECRET_KEY))
+    }, req.app.CONFIG('AMEBO_SECRET_KEY'))
     res.headers = 'Set-Cookie', f'Authentication={token}; Path=/; HttpOnly; Max-Age={60*10}; SameSite=Strict; Secure'
     res.status = HTTPStatus.ACCEPTED
     res.body = {'token': token}

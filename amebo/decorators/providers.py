@@ -45,6 +45,9 @@ class Executor(object):
         except Exception as exc: raise exc
         finally: cursor.close()
 
+    def esc(self, count: int):
+        return '?' if self.engine == 'sqlite' else f'${count}'
+
     @property
     def execute(self, *args, **kwargs):
         async def acaller(*args, **kwargs):

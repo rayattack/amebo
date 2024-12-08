@@ -109,3 +109,4 @@ async def insert(req: Request, res: Response, ctx: Context):
         'deduper': event.deduper,
         'timestamped': event.timestamped
     }
+

@@ -39,7 +39,7 @@
                             throw Error()
                         }).then(data => {
                             Toastify({text: 'Logged in...', style: {background: 'green'}}).showToast();
-                            window.location = '/actions'
+                            window.location = '/p/actions'
                         }).catch(err => {
                             Toastify(
                                 {text: 'Login failed', style: {background: 'red'}}
