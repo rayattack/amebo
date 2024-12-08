@@ -20,8 +20,10 @@ ENGINES = {
 async def connect(app: Application):
     engine = app.CONFIG('engine').lower()
     app.keep('engine', engine)
-    if engine == 'postgres': db = await create_pool(environ.get('AMEBO_DSN'))
-    else: db = Connection('amebo.db')
+    try:
+        if engine == 'postgres': db = await create_pool(environ.get('AMEBO_DSN'))
+        else: db = Connection('amebo.db')
+    except Exception as exc: print('connection middleware failed: {exc}')
     app.keep(DB, db)
 
 
