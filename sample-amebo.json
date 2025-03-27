@@ -1,0 +1,9 @@
+{
+    "AMEBO_USERNAME": "admin",
+    "AMEBO_PASSWORD": "admin",
+    "AMEBO_SECRET": "your-secret",
+    "AMEBO_DATABASE": "postgresql://tersoo:@localhost/postgres",
+    "AMEBO_ENVELOPE": 256,
+    "AMEBO_IDLES": 5,
+    "AMEBO_REST_WHEN": 0
+}
