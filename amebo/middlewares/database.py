@@ -21,7 +21,7 @@ async def connect(app: Application):
     engine = app.CONFIG('engine').lower()
     app.keep('engine', engine)
     try:
-        if engine == 'postgres': db = await create_pool(environ.get('AMEBO_DSN'))
+        if engine.startswith('postgres'): db = await create_pool(environ.get('AMEBO_DATABASE'))
         else: db = Connection('amebo.db')
     except Exception as exc: print('connection middleware failed: {exc}')
     app.keep(DB, db)
@@ -37,7 +37,7 @@ async def disconnect(app: Application):
 
 async def initialize(app: Application):
     """todo: enable switching db backend between redis, pg, sqlite"""
-    if app._.engine == 'postgres':
+    if app._.engine.startswith('postgres'):
         await app.peek(DB).execute(pgscript)
     else:
         try:

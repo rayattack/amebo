@@ -1,6 +1,9 @@
 from heaven import Context, Request, Response
 
+from amebo.decorators.security import protected
 
+
+@protected
 async def pages(req: Request, res: Response, ctx: Context):
     page = req.params.get('page')
     if page not in ['actions', 'events', 'subscriptions', 'applications', 'gists']:

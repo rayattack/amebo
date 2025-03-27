@@ -7,5 +7,5 @@ PG = 'pg'
 
 REDIS = 'redis'
 
-AMEBO_SECRET_KEY = 'AMEBO_SECRET_KEY'
+AMEBO_SECRET = 'AMEBO_SECRET'
 SQLITE = 'sqlite'

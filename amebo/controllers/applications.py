@@ -7,7 +7,7 @@ from bcrypt import checkpw
 from heaven import Context, Request, Response
 
 # src code
-from amebo.constants.literals import DB, AMEBO_SECRET_KEY, MAX_PAGINATION
+from amebo.constants.literals import DB, AMEBO_SECRET, MAX_PAGINATION
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import contextualize, expects
 from amebo.utils.helpers import get_pagination, get_timeline, tokenize
@@ -41,7 +41,6 @@ async def authenticate(req: Request, res: Response, ctx: Context):
             SELECT {username_field}, {password_field} FROM {executor.schema}{table}
                 WHERE {username_field} = {executor.esc(1)}
         '''
-        print(SQL, credential.username)
         row = await executor.fetch(1).execute(SQL, (credential.username))
     except Exception as exc:
         return unauthorized()
@@ -54,7 +53,7 @@ async def authenticate(req: Request, res: Response, ctx: Context):
     token = tokenize({
         'scheme': credential.scheme,
         'username': username,
-    }, req.app.CONFIG('AMEBO_SECRET_KEY'))
+    }, req.app.CONFIG('AMEBO_SECRET'))
     res.headers = 'Set-Cookie', f'Authentication={token}; Path=/; HttpOnly; Max-Age={60*10}; SameSite=Strict; Secure'
     res.status = HTTPStatus.ACCEPTED
     res.body = {'token': token}

@@ -2,22 +2,21 @@ from os import environ
 from uuid import uuid4
 
 # installed libs
-from dotenv import load_dotenv
 from heaven import Application
 from heaven.constants import STARTUP, SHUTDOWN
 
 # src code
 from amebo.aproko import aproko
-from amebo.constants.literals import AMEBO_SECRET_KEY
+from amebo.constants.literals import AMEBO_SECRET
 from amebo.utils.helpers import deterministic_uuid
 
 
 router = Application({
-    'engine': environ.get('AMEBO_ENGINE') or 'sqlite',
-    'envelope_size': int(environ.get('ENVELOPE_SIZE') or 256),  # how many tasks to fetch at once for processing
+    'engine': environ.get('AMEBO_DATABASE') or 'sqlite',
+    'envelope_size': int(environ.get('AMEBO_ENVELOPE') or 256),  # how many tasks to fetch at once for processing
     'idles': 5,  # sleep for 5 seconds
     'rest_when': 0,  # reduce frequency of daemons when tasks less than 5
-    AMEBO_SECRET_KEY: environ.get('AMEBO_SECRET_KEY') or deterministic_uuid()
+    AMEBO_SECRET: environ.get('AMEBO_SECRET') or deterministic_uuid()
 })
 
 

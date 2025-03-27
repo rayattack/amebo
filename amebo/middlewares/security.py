@@ -11,8 +11,8 @@ async def cors(req, res: Response, ctx):
 
 async def upsudo(app: Application) -> str:
     db: Connection = app.peek('db')
-    username = environ.get('AMEBO_ADMIN_USERNAME')
-    pwd = environ.get('AMEBO_ADMIN_PASSWORD')
+    username = environ.get('AMEBO_USERNAME')
+    pwd = environ.get('AMEBO_PASSWORD')
     password = hashpw(pwd.encode(), gensalt())
     print("Administrator Password: ", pwd)
 
@@ -21,7 +21,7 @@ async def upsudo(app: Application) -> str:
     # to admins the need to set password from environmental variable and that that will always override and reset
     # everything else set afterwards
     try:
-        if(app._.engine == 'postgres'):
+        if(app._.engine.startswith('postgres')):
             await db.execute(f'''
                 INSERT INTO _amebo_.credentials(username, password) VALUES($1, $2)
                     ON CONFLICT(username) DO UPDATE SET password = EXCLUDED.password;
@@ -33,6 +33,5 @@ async def upsudo(app: Application) -> str:
 
 
 def upsecret(app: Application):
-    if not environ.get('AMEBO_SECRET_KEY'):
-        print('Deterministic dev secret key is: ', app.CONFIG('AMEBO_SECRET_KEY'))
-
+    if not environ.get('AMEBO_SECRET'):
+        print('Deterministic dev secret key is: ', app.CONFIG('AMEBO_SECRET'))
