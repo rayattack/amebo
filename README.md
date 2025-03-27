@@ -1,16 +1,18 @@
 # AMEBO
+Amebo is a schema registry, and event broadcast runtime that enables you to disconnect your applications from PubSub/RabbitMQ/Kafka/SQS and other such queue/messaging
+systems. It provides a simple API for you to register event schemas, submit message payloads for broadcast to queues/pubsub servers or
+other web applications.
+Amebo is built to enable communication between applications i.e. microservices or
+modules (if you are using monoliths) collectively called **applications**.
 
-Amebo is the simplest pubsub server to use, deploy, understand or maintain. It was
-built to enable communication between applications i.e. microservices or
-modules (if you are using monoliths) collectively called **applications**, and hopes to be able to serve as a small
-but capable and simpler alternative to Kafka, RabbitMQ, SQS/SNS.
 
-1. Availability: Amebo runs on battle tested open source tools i.e. Postgres/SQLite and provides the same level of availability guarantees provided by the backing storage system.
+1. Availability: Amebo runs on battle tested open source tools i.e. Postgres/MySQL/SQLite and provides the same level of availability guarantees provided by the backing storage system.
 
 1. Reliability: Amebo has been used at scale by open source projects to handle 100's of millions of request
 
-1. Latency: Amebo guarantees sub 50ms latencies at scale (barring network and hardware limitations)
+1. Latency: Amebo guarantees sub 10ms latencies at scale (barring network and hardware limitations)
 
+1. Amebo supports a couple of backend engines including but not limited to PubSub, Kafka, RabbitMQ, and SQS.
 
 &nbsp;
 
@@ -29,23 +31,30 @@ These can be microservices or modules (in a monolith) - that create and receive 
 ### 2. Actions
 ---
 This is something that can happen in an [_**application**_](#1-applications) i.e. creating a customer, deleting an order. They are registered
-    on Amebo by their parent [_**application**_](#1-applications), and all actions must provide a valid JSON Schema (can be empty "{}") that Amebo
-    can use to validate action events before sending to [_**subscribers**_](#4-subscribers).
+on Amebo by their parent [_**application**_](#1-applications), and all actions must provide a valid JSON Schema (can be empty "{}") that Amebo
+can use to validate action events before sending to [_**subscribers**_](#4-subscribers).
+
+Actions map to topics in Kafka, PubSub etc.
 
 
 ### 3. Events
 ---
-An event is the occurence of an action and in practice is a HTTP request sent by an [_**application**_](#1-applications) to Amebo to signal it about the occurence of an action locally. Events can have a json payload that must match the JSON Schema of its parent action.
+An event is the occurence of an action and in practice is a HTTP request sent by an [_**application**_](#1-applications) to Amebo to signal it about the
+occurence of an action locally. Events can have a json payload that must match the JSON Schema of its parent action.
+
 
 ### 4. Subscriptions
 ---
 These are HTTP URLs (can be valid hostname for loopback interface on TCP/IP as well) endpoints registered by [_**applications**_](#1-applications) to
-    receive [_**action**_](#3-actions) payloads.
+receive [_**action**_](#3-actions) payloads.
+
 
 &nbsp;
 
 
 ## GETTING STARTED
+
+### Build
 This assumes you have [installed](https://github.com/tersoo/amebo) Amebo on your machine. Amebo requires [Python3.6+](https://www.python.org/downloads)
 ```sh
 # the easy path
@@ -60,7 +69,11 @@ export $PATH=$PATH:/to/a/directory/of/your/choosing/amebo  # add amebo location 
 ambeo -w 2 -a 0.0.0.0:8701
 ```
 
+#### Docker
+
+
 &nbsp;
+
 
 ## 1st : Tell Amebo about all the applications it should tattle about
 ---

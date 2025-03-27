@@ -5,6 +5,5 @@ svgs/
 __pycache__/
 .venv/
 
-Dockerfile
 .DS_STORE
 dist/

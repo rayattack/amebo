@@ -38,8 +38,6 @@ router.ON(STARTUP, 'amebo.middlewares.security.upsecret')
 
 # hooks
 router.BEFORE('/*', 'amebo.middlewares.security.cors')
-router.BEFORE('/x/*', 'amebo.decorators.security.authenticate')
-router.BEFORE('/x1/*', 'amebo.decorators.security.authorization')
 
 
 # authenticate first
