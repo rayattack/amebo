@@ -12,7 +12,7 @@ from amebo.utils.helpers import deterministic_uuid
 
 
 router = Application({
-    'engine': environ.get('AMEBO_DATABASE') or 'sqlite',
+    'engine': environ.get('AMEBO_DSN') or 'sqlite',
     'envelope_size': int(environ.get('AMEBO_ENVELOPE') or 256),  # how many tasks to fetch at once for processing
     'idles': 5,  # sleep for 5 seconds
     'rest_when': 0,  # reduce frequency of daemons when tasks less than 5

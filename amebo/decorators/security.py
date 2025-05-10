@@ -62,6 +62,7 @@ def protected(func):
         # TODO: remove secret from ui and use withCredentials as we use the cookie to get it from the tokens cache
         #TODO: Change checking for secret in handlers to checking for producer name as authorization and identification is done here
         authentication = req.cookies.get('Authentication')
+        # import pdb; pdb.set_trace()
         if not authentication: return leave()
 
         try: metadata = decode(authentication, sk, algorithms='HS256')

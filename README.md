@@ -66,7 +66,7 @@ amebo --workers 2 --address 0.0.0.0:8701
 git clone https://github.com/tersoo/amebo
 mv amebo /to/a/directory/of/your/choosing
 export $PATH=$PATH:/to/a/directory/of/your/choosing/amebo  # add amebo location to your path
-ambeo -w 2 -a 0.0.0.0:8701
+amebo -w 2 -a 0.0.0.0:8701
 ```
 
 #### Docker

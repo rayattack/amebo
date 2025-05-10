@@ -1,12 +1,19 @@
 from os import environ
 from sqlite3 import Connection
 
-from bcrypt import gensalt, hashpw 
+from bcrypt import gensalt, hashpw
 from heaven import Application, Response
 
 
 async def cors(req, res: Response, ctx):
+    allowed: str = req.headers.get('referer') or req.headers.get('X-Hosted') or ''
+    hx_req_headers = 'HX-Boosted, HX-Current-URL, HX-History-Restore-Request, HX-Prompt, HX-Request, HX-Target, HX-Trigger-Name, HX-Trigger'
+    hx_res_headers = 'HX-Location, HX-Push-Url, HX-Redirect, HX-Refresh, HX-Replace-Url, HX-Reswap, HX-Retarget, HX-Reselect, HX-Trigger, HX-Trigger-After-Settle, HX-Trigger-After-Swap'
+    res.headers = 'Access-Control-Allow-Origin', allowed.strip('/')
     res.headers = 'Access-Control-Allow-Credentials', 'true'
+    res.headers = 'Access-Control-Allow-Headers', f'Accept, Content-Type, Content-Disposition, Authorization, Authentication, Vary, Date, Accept-Encoding, X-CSRF-Token, X-Hint, X-Hosted, Set-Cookie, X-Form-ID, {hx_req_headers}'
+    res.headers = 'Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+    res.headers = 'Access-Control-Expose-Headers', f'X-Hint, X-Hosted, X-Other, Set-Cookie, X-Form-ID, HX-History-Restore-Request, {hx_res_headers}'
 
 
 async def upsudo(app: Application) -> str:
@@ -27,7 +34,7 @@ async def upsudo(app: Application) -> str:
                     ON CONFLICT(username) DO UPDATE SET password = EXCLUDED.password;
             ''', username, password.decode())
         else: db.execute('INSERT INTO credentials VALUES(?, ?);', (username, password.decode()))
-    except Exception as exc: 
+    except Exception as exc:
         print("SUDO Credentials not created....")
         print('*' * 100, f': {exc}')
 

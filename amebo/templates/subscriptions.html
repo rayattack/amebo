@@ -160,7 +160,7 @@
     application: 'alphatesting',
     secret: 'sometime-sometime',
     action: '',
-    handler: '/v1/customers',
+    handler: '/v1/change-me',
     description: '',
     max_retries: 3,
     actionContainer: '',
@@ -218,7 +218,7 @@
 }">
     <div class="modal-card-body p-5">
         <div class="brick vertical-aligns-middle">
-            <label class="font-800 mr-2 vertical-aligns-middle">Application: </label>
+            <label class="font-800 mr-2 vertical-aligns-middle">Subscriber Application: </label>
             <div class="select">
                 <select x-model="application" x-init="fetchApplications">
                     <option value="">Select subscribing Application</option>
@@ -240,7 +240,7 @@
             </div>
         </div>
         <div class="brick vertical-aligns-middle">
-            <label class="font-800 mr-2">Action: </label>
+            <label class="font-800 mr-2">Publisher/Action: </label>
             <div class="select">
                 <select x-model="actionContainer">
                     <option value="">Select action Application</option>

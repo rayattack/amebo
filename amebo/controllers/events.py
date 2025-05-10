@@ -75,6 +75,7 @@ async def insert(req: Request, res: Response, ctx: Context):
         if not row: return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, {'error': 'Action can not be used to process any events'})
 
         schemata = loads(row[0])  # load the schemata from the db
+        if isinstance(schemata, str): schemata = loads(schemata)
         schemas = req.app.peek('schematas')  # get the compiled schematas
         if not schemas.get(event.action): schemas[event.action] = compile(schemata)
         validation = schemas.get(event.action)
@@ -86,7 +87,7 @@ async def insert(req: Request, res: Response, ctx: Context):
 
         sqls = f'''INSERT INTO {table} ({', '.join(fields)}) VALUES ({steps.reset.next(4)}) RETURNING rowid;'''
         eventid = await executor.fetch(1).execute(sqls, *values)
-    
+
         sqls = f'''
             INSERT INTO
                 {executor.schema}gists(event, subscription, completed, retries, timestamped)
@@ -97,8 +98,7 @@ async def insert(req: Request, res: Response, ctx: Context):
         await executor.fetch(0).execute(sqls, event.action)
     except JsonSchemaException:
         return res.out(HTTPStatus.NOT_ACCEPTABLE, {'error': f'Event payload does not conform to {event.action} schema'})
-    except Exception as exc:
-        res.status = HTTPStatus.UPGRADE_REQUIRED
+    except ModuleNotFoundError as exc:
         return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
 
     res.status = HTTPStatus.CREATED
@@ -109,4 +109,3 @@ async def insert(req: Request, res: Response, ctx: Context):
         'deduper': event.deduper,
         'timestamped': event.timestamped
     }
-
