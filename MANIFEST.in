@@ -1,0 +1,30 @@
+# Include the shell script
+include amebo/amebo.sh
+
+# Include templates and static files
+recursive-include amebo/templates *.html *.axml
+recursive-include amebo/public *.css *.js *.webp *.png *.ico
+recursive-include amebo/public/icons *
+
+# Include database scripts
+recursive-include amebo/database *.py
+
+# Include models
+recursive-include amebo/models *.py
+
+# Include utils
+recursive-include amebo/utils *.py
+
+# Include documentation
+include README.md
+include LICENSE
+
+# Exclude development files
+exclude .env*
+exclude docker-compose*.yml
+exclude Dockerfile*
+exclude build-docs.sh
+exclude *.json
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store
