@@ -1,5 +1,8 @@
 pgscript = '''
 CREATE SCHEMA IF NOT EXISTS _amebo_;
+DROP TABLE IF EXISTS _amebo_.credentials;
+DROP TABLE IF EXISTS _amebo_.gists;
+DROP TABLE IF EXISTS _amebo_.subscriptions;
 
 SET search_path TO _amebo_;
     CREATE TABLE IF NOT EXISTS _amebo_.credentials(
@@ -41,7 +44,6 @@ SET search_path TO _amebo_;
         application text NOT NULL references applications(application),  -- subscribing app i.e. producer
         action text NOT NULL references actions(action),
         max_retries integer not null default 3,
-        cron_interval text NOT NULL,
         handler text NOT NULL,
         description text,
         timestamped text NOT NULL,
@@ -54,6 +56,7 @@ SET search_path TO _amebo_;
         event integer references events(event),
         subscription integer references subscriptions(subscription),
         completed integer NOT NULL,
+        sleep_until timestamptz,
         retries integer NOT NULL,
         timestamped text NOT NULL,
 

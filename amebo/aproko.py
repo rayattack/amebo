@@ -1,4 +1,5 @@
 from asyncio import gather, sleep
+from datetime import datetime
 from http import HTTPStatus
 from sqlite3 import Connection, Cursor
 
@@ -65,6 +66,7 @@ async def aproko(router: Router):
                     s.application = a.application
                 WHERE g.completed <> 1
                 AND g.retries < s.max_retries
+                AND (g.sleep_until IS NULL OR g.sleep_until < '{datetime.now().isoformat()}'::timestamp)
                 ORDER BY g.event LIMIT {router.CONFIG('envelope_size')};
             ''')
 

@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from http import HTTPStatus
 from sqlite3 import Connection
 
@@ -83,16 +84,24 @@ async def insert(req: Request, res: Response, ctx: Context):
 
         table = f'{executor.schema}events'
         fields = ['action', 'payload', 'deduper', 'timestamped',]
-        values = [event.action, dumps(event.payload).decode(), event.deduper, event.timestamped.isoformat()]
+        values = [
+            event.action,
+            dumps(event.payload).decode(),
+            event.deduper,
+            event.timestamped.isoformat()
+        ]
 
         sqls = f'''INSERT INTO {table} ({', '.join(fields)}) VALUES ({steps.reset.next(4)}) RETURNING rowid;'''
         eventid = await executor.fetch(1).execute(sqls, *values)
+        sleep_until = None
+        if event.sleep_until:
+            sleep_until = datetime.now() + timedelta(seconds = event.sleep_until)
 
         sqls = f'''
             INSERT INTO
-                {executor.schema}gists(event, subscription, completed, retries, timestamped)
+                {executor.schema}gists(event, subscription, completed, retries, sleep_until, timestamped)
             SELECT
-                {eventid[0]}, subscription, 0, 0, '{event.timestamped.isoformat()}'
+                {eventid[0]}, subscription, 0, 0, '{sleep_until.isoformat() if sleep_until else None}', '{event.timestamped.isoformat()}'
             FROM {executor.schema}subscriptions WHERE action = {steps.reset.next()}
         '''
         await executor.fetch(0).execute(sqls, event.action)
@@ -106,6 +115,7 @@ async def insert(req: Request, res: Response, ctx: Context):
         'event': eventid[0],
         'payload': event.payload,
         'action': event.action,
+        'sleep_until': sleep_until,
         'deduper': event.deduper,
         'timestamped': event.timestamped
     }

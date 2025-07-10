@@ -70,7 +70,7 @@ async def insert(req: Request, res: Response, ctx: Context):
     except Exception as exc:
         return res.out(HTTPStatus.BAD_REQUEST, {'error': f'Invalid data submmitted {exc}'})
 
-    if not rows: return res.out(HTTPStatus.NOT_ACCEPTABLE, {'error': 'Subscription request rejected'})
+    if not rows: return res.out(HTTPStatus.EXPECTATION_FAILED, {'error': 'Subscription request rejected'})
     try:
         row = rows[0]
         host = row.strip('/')
@@ -89,7 +89,9 @@ async def insert(req: Request, res: Response, ctx: Context):
     try:
         sqls = f'''INSERT INTO {executor.schema}subscriptions ({', '.join(fields)}) VALUES ({steps.reset.next(5)}) RETURNING rowid;'''
         subscriptionid = await executor.execute(sqls, *values)
-    except Exception as exc: return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
+    except Exception as exc:
+        print(exc)
+        return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
 
     res.status = HTTPStatus.CREATED
     subscriptions.subscription = subscriptionid[0]

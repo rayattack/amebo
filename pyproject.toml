@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "amebo"
-version = "0.5.3"
+version = "0.5.6"
 description = "HTTP Event Notifications Server - Asynchronous Communication Engine"
 authors = ["Tersoo"]
 license = "MIT"

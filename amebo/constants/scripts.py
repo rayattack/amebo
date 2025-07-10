@@ -1,6 +1,7 @@
 initdbscript = '''
 BEGIN;
     DROP TABLE IF EXISTS credentials;
+    DROP TABLE IF EXISTS gists;
 
     CREATE TABLE IF NOT EXISTS credentials(
         username text primary key,
@@ -48,6 +49,7 @@ BEGIN;
         subscription integer references subscriptions(subscription),
         completed integer NOT NULL,
         retries integer NOT NULL,
+        sleep_until text,
         timestamped text NOT NULL,
 
         UNIQUE(event, subscription)

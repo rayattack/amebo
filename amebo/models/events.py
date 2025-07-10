@@ -12,6 +12,7 @@ class Events(Model):
     secret: str
     event: Optional[int] = None
     deduper: str
+    sleep_until: Optional[int]  # number of seconds to sleep until
     payload: Union[str, dict]
     timestamped: datetime = Field(default_factory=datetime.now)
 
@@ -19,7 +20,7 @@ class Events(Model):
     def validate_payload(cls, value: Union[str, dict]):
         if isinstance(value, dict): return value
         return loads(value)
-    
+
     @field_validator('action')
     def _action(cls, value: str):
         if not value: raise ValueError('Action is a required field')

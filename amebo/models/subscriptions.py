@@ -15,7 +15,7 @@ class Subscriptions(Model):
     action: str
     handler: str
     secret: str
-    max_retries: int = Field(le=10_000, ge=1)
+    max_retries: Optional[int] = Field(le=10_000, ge=1, default=3)
     timestamped: datetime = Field(default_factory=datetime.now)
 
     @field_validator('handler')
