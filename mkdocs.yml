@@ -1,0 +1,199 @@
+site_name: Amebo Documentation
+site_description: HTTP Event Notifications Server - Asynchronous Communication Engine
+site_author: Raymond Ortserga
+site_url: https://rayattack.github.io/amebo/
+
+# Repository
+repo_name: rayattack/amebo
+repo_url: https://github.com/rayattack/amebo
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2024 Raymond Ortserga
+
+# Configuration
+theme:
+  name: material
+  custom_dir: docs/overrides
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.tabs.link
+    - content.tooltips
+    - header.autohide
+    - navigation.expand
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.prune
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+    - toc.integrate
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  font:
+    text: Roboto
+    code: Roboto Mono
+  favicon: assets/favicon.png
+  logo: assets/logo.png
+  icon:
+    logo: logo
+
+# Plugins
+plugins:
+  - search:
+      separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - minify:
+      minify_html: true
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+  - awesome-pages
+  - glightbox
+  - include-markdown
+  - macros
+  - table-reader
+  - mermaid2
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            merge_init_into_class: true
+            show_submodules: true
+
+# Customization
+extra:
+  version:
+    provider: mike
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/rayattack
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/amebo/
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/r/rayattack/amebo
+  generator: false
+
+# Extensions
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      normalize_issue_symbols: true
+      repo_url_shorthand: true
+      user: rayattack
+      repo: amebo
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - includes/mkdocs.md
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# Page tree
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Quick Start: getting-started/quick-start.md
+    - Installation: getting-started/installation.md
+    - Configuration: getting-started/configuration.md
+    - First Steps: getting-started/first-steps.md
+  - User Guide:
+    - Core Concepts: user-guide/concepts.md
+    - Applications: user-guide/applications.md
+    - Events & Actions: user-guide/events-actions.md
+    - Subscriptions: user-guide/subscriptions.md
+    - Schema Registry: user-guide/schema-registry.md
+  - Deployment:
+    - Docker Setup: deployment/docker.md
+    - Docker Cluster: deployment/docker-cluster.md
+    - Production: deployment/production.md
+    - Monitoring: deployment/monitoring.md
+    - Scaling: deployment/scaling.md
+  - API Reference:
+    - Overview: api/overview.md
+    - Authentication: api/authentication.md
+    - Applications API: api/applications.md
+    - Events API: api/events.md
+    - Actions API: api/actions.md
+    - Subscriptions API: api/subscriptions.md
+  - Examples:
+    - Basic Usage: examples/basic-usage.md
+    - Microservices: examples/microservices.md
+    - Event Sourcing: examples/event-sourcing.md
+    - Integration Patterns: examples/integration-patterns.md
+  - Development:
+    - Contributing: development/contributing.md
+    - Architecture: development/architecture.md
+    - Testing: development/testing.md
+    - Release Process: development/release-process.md
+  - Support:
+    - FAQ: support/faq.md
+    - Troubleshooting: support/troubleshooting.md
+    - Performance: support/performance.md
+    - Migration Guide: support/migration.md
