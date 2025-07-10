@@ -1,0 +1,144 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: amebo-postgres
+    environment:
+      POSTGRES_DB: amebo
+      POSTGRES_USER: amebo
+      POSTGRES_PASSWORD: eldorad0
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - amebo-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U amebo -d amebo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Amebo Instance 1
+  amebo-1:
+    build: .
+    container_name: amebo-instance-1
+    environment:
+      AMEBO_USERNAME: administrator
+      AMEBO_PASSWORD: N0.open.Sesame!
+      AMEBO_ENGINE: postgres
+      AMEBO_DSN: postgres://amebo:eldorad0@postgres:5432/amebo
+      AMEBO_SECRET: 9ad35404a28e59759bdd484bb81c0755
+      AMEBO_PORT: 3310
+      AMEBO_ENVELOPE: 256
+      AMEBO_IDLES: 5
+      AMEBO_REST_WHEN: 0
+      INSTANCE_ID: amebo-1
+    ports:
+      - "3311:3310"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - amebo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3310/v1/applications"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Amebo Instance 2
+  amebo-2:
+    build: .
+    container_name: amebo-instance-2
+    environment:
+      AMEBO_USERNAME: administrator
+      AMEBO_PASSWORD: N0.open.Sesame!
+      AMEBO_ENGINE: postgres
+      AMEBO_DSN: postgres://amebo:eldorad0@postgres:5432/amebo
+      AMEBO_SECRET: 9ad35404a28e59759bdd484bb81c0755
+      AMEBO_PORT: 3310
+      AMEBO_ENVELOPE: 256
+      AMEBO_IDLES: 5
+      AMEBO_REST_WHEN: 0
+      INSTANCE_ID: amebo-2
+    ports:
+      - "3312:3310"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - amebo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3310/v1/applications"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Amebo Instance 3
+  amebo-3:
+    build: .
+    container_name: amebo-instance-3
+    environment:
+      AMEBO_USERNAME: administrator
+      AMEBO_PASSWORD: N0.open.Sesame!
+      AMEBO_ENGINE: postgres
+      AMEBO_DSN: postgres://amebo:eldorad0@postgres:5432/amebo
+      AMEBO_SECRET: 9ad35404a28e59759bdd484bb81c0755
+      AMEBO_PORT: 3310
+      AMEBO_ENVELOPE: 256
+      AMEBO_IDLES: 5
+      AMEBO_REST_WHEN: 0
+      INSTANCE_ID: amebo-3
+    ports:
+      - "3313:3310"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - amebo-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3310/v1/applications"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Nginx Load Balancer
+  nginx:
+    image: nginx:alpine
+    container_name: amebo-loadbalancer
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - amebo-1
+      - amebo-2
+      - amebo-3
+    networks:
+      - amebo-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  amebo-network:
+    driver: bridge
