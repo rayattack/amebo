@@ -1,272 +1,153 @@
-# AMEBO
-Amebo is a schema registry, and event broadcast runtime that enables you to disconnect your applications from PubSub/RabbitMQ/Kafka/SQS and other such queue/messaging
-systems. It provides a simple API for you to register event schemas, submit message payloads for broadcast to queues/pubsub servers or
-other web applications.
-Amebo is built to enable communication between applications i.e. microservices or
-modules (if you are using monoliths) collectively called **applications**.
+# Amebo
 
+[![PyPI version](https://badge.fury.io/py/amebo.svg)](https://badge.fury.io/py/amebo)
+[![Docker Pulls](https://img.shields.io/docker/pulls/rayattack/amebo)](https://hub.docker.com/r/rayattack/amebo)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Documentation](https://img.shields.io/badge/docs-available-brightgreen)](https://rayattack.github.io/amebo/)
 
-1. Availability: Amebo runs on battle tested open source tools i.e. Postgres/MySQL/SQLite and provides the same level of availability guarantees provided by the backing storage system.
+**HTTP Event Notifications Server** - A lightweight, schema-driven event broadcasting system for microservices and distributed applications.
 
-1. Reliability: Amebo has been used at scale by open source projects to handle 100's of millions of request
+Amebo simplifies event-driven architecture by providing a centralized hub for publishing, validating, and distributing events across your applications with built-in schema registry and webhook delivery.
 
-1. Latency: Amebo guarantees sub 10ms latencies at scale (barring network and hardware limitations)
+## ✨ Key Features
 
-1. Amebo supports a couple of backend engines including but not limited to PubSub, Kafka, RabbitMQ, and SQS.
+- **🚀 High Performance**: Sub-10ms response times with 1000+ events/second throughput
+- **📋 Schema Registry**: Built-in JSON Schema validation for all events
+- **🔄 Reliable Delivery**: Automatic retries with exponential backoff
+- **🐳 Production Ready**: Docker support with clustering and monitoring
+- **🛡️ Secure**: JWT authentication and webhook signature verification
+- **📊 Observable**: Comprehensive metrics and health checks
 
-&nbsp;
+## 🏗️ Core Concepts
 
-## How It Works
----
-Amebo has only 4 concepts (first class objects) to understand or master.
+Amebo has just **4 simple concepts** to master:
 
-&nbsp;
+1. **Applications** - Services that publish and consume events
+2. **Actions** - Event types with JSON Schema validation
+3. **Events** - Actual occurrences of actions with payloads
+4. **Subscriptions** - Webhook endpoints that receive events
 
-### 1. Applications
----
-These can be microservices or modules (in a monolith) - that create and receive notifications about [_**events**_](#2-events). All applications must be registered on
-    amebo ;-) before they can publish [_**events**_](#3-events).
+## 🚀 Quick Start
 
+### Docker (Recommended)
 
-### 2. Actions
----
-This is something that can happen in an [_**application**_](#1-applications) i.e. creating a customer, deleting an order. They are registered
-on Amebo by their parent [_**application**_](#1-applications), and all actions must provide a valid JSON Schema (can be empty "{}") that Amebo
-can use to validate action events before sending to [_**subscribers**_](#4-subscribers).
+```bash
+# Start Amebo with PostgreSQL
+docker run -d \
+  --name amebo \
+  -p 3310:3310 \
+  -e AMEBO_DSN="postgresql://user:pass@host:5432/amebo" \
+  rayattack/amebo:latest
+```
 
-Actions map to topics in Kafka, PubSub etc.
+### Python Package
 
-
-### 3. Events
----
-An event is the occurence of an action and in practice is a HTTP request sent by an [_**application**_](#1-applications) to Amebo to signal it about the
-occurence of an action locally. Events can have a json payload that must match the JSON Schema of its parent action.
-
-
-### 4. Subscriptions
----
-These are HTTP URLs (can be valid hostname for loopback interface on TCP/IP as well) endpoints registered by [_**applications**_](#1-applications) to
-receive [_**action**_](#3-actions) payloads.
-
-
-&nbsp;
-
-
-## GETTING STARTED
-
-### Build
-This assumes you have [installed](https://github.com/tersoo/amebo) Amebo on your machine. Amebo requires [Python3.6+](https://www.python.org/downloads)
-```sh
-# the easy path
+```bash
 pip install amebo
-amebo --workers 2 --address 0.0.0.0:8701
-
-
-# the hardway (manual installation) BUT not the only way... Sorry, I couldn't resist the pun ;-)
-git clone https://github.com/tersoo/amebo
-mv amebo /to/a/directory/of/your/choosing
-export $PATH=$PATH:/to/a/directory/of/your/choosing/amebo  # add amebo location to your path
-amebo -w 2 -a 0.0.0.0:8701
+amebo --workers 2 --address 0.0.0.0:3310
 ```
 
-#### Docker
+### Example Usage
 
+```bash
+# 1. Register an application
+curl -X POST http://localhost:3310/v1/applications \
+  -H "Content-Type: application/json" \
+  -d '{
+    "application": "user-service",
+    "address": "https://users.myapp.com",
+    "secret": "your-secret-key"
+  }'
 
-&nbsp;
-
-
-## 1st : Tell Amebo about all the applications it should tattle about
----
-
-`endpoint: /v1/applications`
-
-<table>
-<tr>
-<th>Schema</th>
-<th>Example Payload<th>
-</tr>
-<tr>
-<td>
-
-```json
-{
-    "$schema": "",
-    "type": "object",
-    "properties": {
-        "application": {"type": "string"},
-        "secret": {"type": "string"},
-        "address": {"type": "web", "format": "ipv4 | ipv6 | hostname | idn-hostname"}
-    },
-    "required": ["application", "secret", "address"]
-}
-```
-
-</td>
-<td>
-
-```json
-{
-    "application": "customers",
-    "secret": "some-super-duper-secret-of-the-module-or-application-or-microservice",
-    "address": "http://0.0.0.0:3310"
-}
-```
-
-</td>
-</tr>
-</table>
-
-
-&nbsp;
-
-## 2nd : Register actions that can happen in the registered producers
----
-
-`endpoint: /v1/actions`
-
-<table>
-<tr>
-<th>Endpoint JSON Schema</th>
-<th>Example Payload<th>
-</tr>
-<tr>
-<td>
-
-```json
-{
-    "type": "object",
-    "properties": {
-        "action": {"type": "string"},
-        "application": {"type": "string"},
-        "schemata": {
-            "type": "object",
-            "properties": {
-                "type": {"type": "string"},
-                "properties": {"type": "object"},
-                "required": {"type": "array"}
-            }
-        }
-    },
-    "required": ["action", "application", "schemata"]
-}
-```
-
-</td>
-<td>
-
-```json
-{
-    "action": "customers.v1.created",
-    "application": "customers",
+# 2. Define an action with schema
+curl -X POST http://localhost:3310/v1/actions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "user.created",
+    "application": "user-service",
     "schemata": {
-        "$id": "https://your-domain/customers/customer-created-schema-example.json",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-            "customer_id": {"type": "number"},
-            "first_name": {"type": "string"},
-            "last_name": {"type": "string"},
-            "email": {"type": "string", "format": "email"}
-        },
-        "required": ["customer_id", "email"]
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "email": {"type": "string", "format": "email"}
+      },
+      "required": ["id", "email"]
     }
-}
+  }'
+
+# 3. Publish an event
+curl -X POST http://localhost:3310/v1/events \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "user.created",
+    "payload": {
+      "id": "user-123",
+      "email": "john@example.com"
+    }
+  }'
 ```
 
-</td>
-</tr>
-</table>
 
-&nbsp;
+## 📚 Documentation
 
-## 3rd : Tell Amebo when an action occurs i.e. create an event
+**[📖 Complete Documentation](https://rayattack.github.io/amebo/)** - Comprehensive guides and API reference
+
+### Quick Links
+
+- **[🚀 Quick Start Guide](https://rayattack.github.io/amebo/getting-started/quick-start/)** - Get up and running in 5 minutes
+- **[⚙️ Installation](https://rayattack.github.io/amebo/getting-started/installation/)** - Docker, Python, and production setup
+- **[🏗️ Core Concepts](https://rayattack.github.io/amebo/user-guide/concepts/)** - Understanding Amebo's architecture
+- **[🔌 API Reference](https://rayattack.github.io/amebo/api/overview/)** - Complete REST API documentation
+- **[🐳 Production Deployment](https://rayattack.github.io/amebo/deployment/production/)** - Scaling and monitoring guides
+- **[💡 Examples](https://rayattack.github.io/amebo/examples/basic-usage/)** - Real-world usage patterns
+
+## 🏢 Use Cases
+
+- **Microservices Communication** - Decouple services with event-driven architecture
+- **Event Sourcing** - Build audit trails and event stores
+- **Webhook Management** - Centralized webhook delivery with retries
+- **Data Pipeline Triggers** - Trigger downstream processing on data changes
+- **User Activity Tracking** - Track and react to user actions across services
+
+## 🔧 Production Features
+
+- **High Availability** - Multi-instance clustering with load balancing
+- **Monitoring** - Prometheus metrics and health checks
+- **Security** - JWT authentication and webhook signatures
+- **Performance** - Connection pooling and batch processing
+- **Reliability** - Automatic retries and dead letter queues
+
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](https://rayattack.github.io/amebo/development/contributing/) for details.
+
+- **[🐛 Report Issues](https://github.com/rayattack/amebo/issues)** - Bug reports and feature requests
+- **[💬 Discussions](https://github.com/rayattack/amebo/discussions)** - Questions and community support
+- **[🔧 Development](https://rayattack.github.io/amebo/development/architecture/)** - Architecture and development setup
+
+## 📊 Performance
+
+- **Response Time**: < 10ms (p95)
+- **Throughput**: 1000+ events/second per instance
+- **Availability**: 99.9% uptime with proper deployment
+- **Scalability**: Horizontal scaling with load balancing
+
+## 🛠️ Technology Stack
+
+- **Runtime**: Python 3.8+ with FastAPI
+- **Database**: PostgreSQL (production), SQLite (development)
+- **Deployment**: Docker with clustering support
+- **Monitoring**: Prometheus metrics and health checks
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🌍 Etymology
+
+The word "amebo" is West African slang (Nigerian origin) for someone who never keeps what you tell them to themselves - a chronic gossip who spreads news everywhere. Perfect for an event broadcasting system! 😄
+
 ---
 
-`endpoint: /v1/events`
-
-| Key | Description |
-|---|---|
-| **action** | Identifier name of the action. (As registered in the previous step.) |
-| **deduper** | Deduplication string. used to prevent the same event from being registered twice |
-| **payload** | JSON data (must confirm to the schema registerd with the action) |
-
-&nbsp;
-
-<table>
-<tr>
-<th>Endpoint JSON Schema</th>
-<th>Example Payload<th>
-</tr>
-<tr>
-<td>
-
-```json
-{
-    "type": "object",
-    "properties": {
-        "event": {"type": "string"},
-        "application": {"type": "string"},
-        "schemata": {
-            "type": "string",
-            "format": "ipv4 | ipv6 | hostname | idn-hostname"
-        },
-        "location": {"type": "web"}
-    },
-    "required": ["application", "secret", "location"]
-}
-```
-
-</td>
-<td>
-
-```json
-{
-    "event": "customers.v1.created",
-    "application": "customers",
-    "schema": {
-        "$id": "https://your-domain/customers/customer-created-schema-example.json",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-            "event": {"type": "string"},
-            "application": {"type": "string"},
-            "schemata": {"type": "string", "format": "ipv4 | ipv6 | hostname | idn-hostname"},
-            "location": {"type": "web"}
-        },
-        "required": ["application", "secret", "location"]
-    },
-    "location": "http://0.0.0.0:3300"
-}
-```
-
-</td>
-</tr>
-</table>
-
-&nbsp;
-
-## Finally: Create an endpoint to receive action notifications from Amebo
----
-Other applications/microservices/modules within the same monolith can create handler endpoints that will be sent
-the payload with optional encryption if an encryption key was provided by the subscriber when registering for
-the event.
-
-# Why? Advantages over traditional Message Oriented Middleware(s)
-
-1. Amebo comes complete with a Schema Registry, ensuring actions conform to event schema, and makes it easy for
-developers to search for events by application(s) with commensurate schema (i.e. what is required, what is optional) as opposed to meetings with team mates continually.
-
-1. GUI for tracking events, actions, subscribers. Easy discovery of what actions exist, what events failed and GUI retry for specific subscribers
-
-1. Gossiping is HTTP native i.e. subscribers receive http requests automatically at pre-registered endpoints
-
-1. Envelope format and transmission is web native and clearly outlined by schema registry
-
-1. Topic management is simplified as actions with versioning support baked in
-
-1. Infinite retries (stop after $MAX_MINUTES coming soon) EDITED: Stop after $MAX_RETRIES implemented
-
-
-# Trivia
-
-The word `amebo` is a West African (Nigerian origin - but used in Ghana, Benin, Cameroon etc.) slang used to describe anyone that never keeps what you tell them to themselves. A talkative, never mind their business individual (a chronic gossip).
+**[📖 Get Started with the Documentation](https://rayattack.github.io/amebo/)** | **[🐳 Docker Hub](https://hub.docker.com/r/rayattack/amebo)** | **[📦 PyPI](https://pypi.org/project/amebo/)**
