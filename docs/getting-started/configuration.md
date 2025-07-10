@@ -446,6 +446,7 @@ amebo --show-config
 
 ### Environment Validation
 
+{% raw %}
 ```bash
 #!/bin/bash
 # validate-config.sh
@@ -474,6 +475,7 @@ fi
 
 echo "Configuration validation passed!"
 ```
+{% endraw %}
 
 ## Troubleshooting
 

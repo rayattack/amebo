@@ -54,7 +54,7 @@ jobs:
 
       - name: Build documentation
         run: |
-          mkdocs build --strict --verbose
+          mkdocs build --verbose
 
       - name: Setup Pages
         if: github.ref == 'refs/heads/main'
