@@ -1,5 +1,6 @@
 .vscode/
 *.db*
+.idea/
 
 svgs/
 __pycache__/
@@ -7,3 +8,5 @@ __pycache__/
 
 .DS_STORE
 dist/
+
+site/
