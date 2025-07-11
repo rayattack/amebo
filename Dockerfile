@@ -20,15 +20,17 @@ WORKDIR /app
 # Copy dependency files
 COPY pyproject.toml ./
 COPY setup.py ./
+COPY MANIFEST.in ./
+COPY README.md ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir poetry && \
-    poetry config virtualenvs.create false && \
-    poetry install --no-dev --no-interaction --no-ansi
-
-# Copy application code
+# Copy application code (needed for setup.py to read version)
 COPY amebo/ ./amebo/
-COPY engines/ ./engines/
+
+# Install build dependencies and build the package
+RUN pip install --no-cache-dir build && \
+    python -m build && \
+    pip install --no-cache-dir dist/*.whl && \
+    rm -rf dist/ build/ *.egg-info/
 
 # Create a non-root user
 RUN useradd --create-home --shell /bin/bash amebo && \
@@ -45,4 +47,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${AMEBO_PORT:-3310}/v1/applications || exit 1
 
 # Default command
-CMD ["python", "-m", "amebo.main"]
+CMD ["amebo"]

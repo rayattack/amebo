@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
@@ -13,7 +11,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     ports:
-      - "5432:5432"
+      - "5433:5432"
     networks:
       - amebo-network
     healthcheck:
@@ -27,16 +25,19 @@ services:
   amebo-1:
     build: .
     container_name: amebo-instance-1
+    command: [
+      "amebo",
+      "--amebo_username", "administrator",
+      "--amebo_password", "N0.open.Sesame!",
+      "--amebo_engine", "postgres",
+      "--amebo_dsn", "postgres://amebo:eldorad0@postgres:5432/amebo",
+      "--amebo_secret", "9ad35404a28e59759bdd484bb81c0755",
+      "--amebo_port", "3310",
+      "--amebo_envelope", "256",
+      "--amebo_idles", "5",
+      "--amebo_rest_when", "0"
+    ]
     environment:
-      AMEBO_USERNAME: administrator
-      AMEBO_PASSWORD: N0.open.Sesame!
-      AMEBO_ENGINE: postgres
-      AMEBO_DSN: postgres://amebo:eldorad0@postgres:5432/amebo
-      AMEBO_SECRET: 9ad35404a28e59759bdd484bb81c0755
-      AMEBO_PORT: 3310
-      AMEBO_ENVELOPE: 256
-      AMEBO_IDLES: 5
-      AMEBO_REST_WHEN: 0
       INSTANCE_ID: amebo-1
     ports:
       - "3311:3310"
@@ -57,16 +58,19 @@ services:
   amebo-2:
     build: .
     container_name: amebo-instance-2
+    command: [
+      "amebo",
+      "--amebo_username", "administrator",
+      "--amebo_password", "N0.open.Sesame!",
+      "--amebo_engine", "postgres",
+      "--amebo_dsn", "postgres://amebo:eldorad0@postgres:5432/amebo",
+      "--amebo_secret", "9ad35404a28e59759bdd484bb81c0755",
+      "--amebo_port", "3310",
+      "--amebo_envelope", "256",
+      "--amebo_idles", "5",
+      "--amebo_rest_when", "0"
+    ]
     environment:
-      AMEBO_USERNAME: administrator
-      AMEBO_PASSWORD: N0.open.Sesame!
-      AMEBO_ENGINE: postgres
-      AMEBO_DSN: postgres://amebo:eldorad0@postgres:5432/amebo
-      AMEBO_SECRET: 9ad35404a28e59759bdd484bb81c0755
-      AMEBO_PORT: 3310
-      AMEBO_ENVELOPE: 256
-      AMEBO_IDLES: 5
-      AMEBO_REST_WHEN: 0
       INSTANCE_ID: amebo-2
     ports:
       - "3312:3310"
@@ -87,16 +91,19 @@ services:
   amebo-3:
     build: .
     container_name: amebo-instance-3
+    command: [
+      "amebo",
+      "--amebo_username", "administrator",
+      "--amebo_password", "N0.open.Sesame!",
+      "--amebo_engine", "postgres",
+      "--amebo_dsn", "postgres://amebo:eldorad0@postgres:5432/amebo",
+      "--amebo_secret", "9ad35404a28e59759bdd484bb81c0755",
+      "--amebo_port", "3310",
+      "--amebo_envelope", "256",
+      "--amebo_idles", "5",
+      "--amebo_rest_when", "0"
+    ]
     environment:
-      AMEBO_USERNAME: administrator
-      AMEBO_PASSWORD: N0.open.Sesame!
-      AMEBO_ENGINE: postgres
-      AMEBO_DSN: postgres://amebo:eldorad0@postgres:5432/amebo
-      AMEBO_SECRET: 9ad35404a28e59759bdd484bb81c0755
-      AMEBO_PORT: 3310
-      AMEBO_ENVELOPE: 256
-      AMEBO_IDLES: 5
-      AMEBO_REST_WHEN: 0
       INSTANCE_ID: amebo-3
     ports:
       - "3313:3310"

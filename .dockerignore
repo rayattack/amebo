@@ -3,8 +3,11 @@
 .gitignore
 
 # Documentation
-*.md
 docs/
+# Exclude specific markdown files but keep README.md for Docker build
+TODO.md
+ASSUMPTIONS.md
+DOCKER_CLUSTER_README.md
 
 # Docker files
 Dockerfile

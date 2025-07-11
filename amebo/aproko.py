@@ -18,12 +18,18 @@ async def aproko(router: Router):
     x = executor.schema
     accepters = []
     rejecters = []
+
+    # Check if database is available
+    if executor.db is None and executor.engine and executor.engine.startswith('postgres'):
+        print("Warning: Database connection not available, aproko daemon will not run")
+        return False
     async def notify(endpoint: str, data: dict, secret: str, gist_id: int):
         headers = {
             'Content-Type': 'application/json',
             'X-PASS-Phrase': secret
         }
 
+        client = None
         try:
             client = AsyncClient()
             result = await client.post(endpoint, json=data, headers=headers)
@@ -33,7 +39,8 @@ async def aproko(router: Router):
             print('Exception occured@@@@@@@@@@@@@@@@@@@@@@@@@: ', exc, ' ', endpoint)
             rejecters.append(gist_id)
         finally:
-            await client.aclose()
+            if client:
+                await client.aclose()
 
         try:
             rejections = str(tuple(rejecters)).replace(',)', ')')
@@ -70,6 +77,8 @@ async def aproko(router: Router):
                 ORDER BY g.event LIMIT {router.CONFIG('envelope_size')};
             ''')
 
+            if gists is None:
+                gists = []
             if len(gists) < router.CONFIG('rest_when'): await sleep(router.CONFIG('idles'))
             await gather(*[notify(endpoint, loads(payload), secret, gid) for endpoint, payload, secret, gid in gists])
         except Exception as exc: print('Exception occured: ', exc)

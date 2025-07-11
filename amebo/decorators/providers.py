@@ -30,6 +30,13 @@ class Executor(object):
         return self
 
     async def _pg(self, query: str, *args):
+        if self.db is None:
+            # Handle case where database connection failed (e.g., in tests)
+            print("Warning: PostgreSQL database connection is None, skipping query")
+            if self._fetching == 1: return None
+            if self._fetching > 1: return []
+            else: return None
+
         async with self.db.acquire() as conn:
             async with conn.transaction():
                 if self._fetching == 1: return await conn.fetchrow(query, *args)
