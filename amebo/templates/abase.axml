@@ -3,7 +3,7 @@
     <meta charset="UTF-8"/>
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Amebo 1.0</title>
+    <title>Amebo {{ ctx.amebo_version }}</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css">
 
     <link rel="stylesheet" href="/public/toastify.min.css" />
@@ -22,15 +22,15 @@
         <div class="column is-12">
             <section class="bg-almost-white panel pb-3">
                 <p class="panel-heading is-flex justify-content-space-between">
-                    <button class="button is-link is-small">
+                    <button class="button is-link is-small" @click="() => {
+                        showModalContent = true;
+                    }">
                         <span class="icon">
                             <img src="/public/icons/add.svg" style="filter: invert(1)"></img>
                         </span>
-                        <span class="icon-text" @click="() => {
-                            showModalContent = true;
-                        }">Create New</span>
+                        <span class="icon-text">Create New</span>
                     </button>
-                    <span>Amebo 1.0</span>
+                    <span>Amebo {{ ctx.amebo_version }}</span>
                 </p>
                 <p class="panel-tabs">
                     {% set icons = {

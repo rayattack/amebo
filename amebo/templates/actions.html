@@ -63,7 +63,9 @@
             readOnlyIDE: null
         }">
             <aside class="column is-4 px-5">
-                <button class="button is-danger is-small mb-3" @click="previewing = null">Back To Actions</button>
+                <div class="display-flex space-between">
+                    <button class="button is-warning is-small mb-3" @click="previewing = null">Back To Actions</button>
+                </div>
                 <div class="display-flex space-between display-field py-1">
                     <span class="label">Action</span>
                     <div x-text="previewing.action"></div>
@@ -90,7 +92,10 @@
                     calculateHeight($el, 50);
                     readOnlyIDE = ace.edit($el);
                     readOnlyIDE.session.setMode('ace/mode/json');
-                    readOnlyIDE.setValue(previewing.schemata);
+                    const schemaValue = typeof previewing.schemata === 'string'
+                        ? previewing.schemata
+                        : JSON.stringify(previewing.schemata || {}, null, 2);
+                    readOnlyIDE.setValue(schemaValue);
                     readOnlyIDE.setReadOnly(true);
                 }"></div>
             </aside>
