@@ -76,7 +76,8 @@ async def insert(req: Request, res: Response, ctx: Context):
         application, secret = _application
         if(secret != action.secret):
             return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'Incorrect {application} secret detected'})
-    except Exception as exc: return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'{exc}'})
+    except Exception as exc:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'{exc}'})
     
     try:
         sqls = f'''INSERT INTO {executor.schema}{table}({', '.join(fields)}) VALUES ({steps.reset.next(4)})'''

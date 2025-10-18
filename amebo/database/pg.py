@@ -1,8 +1,6 @@
 pgscript = '''
 CREATE SCHEMA IF NOT EXISTS _amebo_;
 DROP TABLE IF EXISTS _amebo_.credentials;
-DROP TABLE IF EXISTS _amebo_.gists;
-DROP TABLE IF EXISTS _amebo_.subscriptions;
 
 SET search_path TO _amebo_;
     CREATE TABLE IF NOT EXISTS _amebo_.credentials(
@@ -33,6 +31,7 @@ SET search_path TO _amebo_;
         action text NOT NULL references actions(action),
         deduper text NOT NULL,
         payload text NOT NULL,
+        metadata text,  -- can be null and is optional, empty object sent if absent
         timestamped text NOT NULL,
 
         UNIQUE(deduper, payload)

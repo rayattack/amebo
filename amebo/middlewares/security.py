@@ -4,6 +4,8 @@ from sqlite3 import Connection
 from bcrypt import gensalt, hashpw
 from heaven import Application, Response
 
+from amebo.constants.literals import AMEBO_SECRET
+
 
 async def cors(req, res: Response, ctx):
     allowed: str = req.headers.get('referer') or req.headers.get('X-Hosted') or ''
@@ -40,5 +42,6 @@ async def upsudo(app: Application) -> str:
 
 
 def upsecret(app: Application):
-    if not environ.get('AMEBO_SECRET'):
-        print('Deterministic dev secret key is: ', app.CONFIG('AMEBO_SECRET'))
+    secret = environ.get(AMEBO_SECRET)
+    print('Amebo Secret: ', secret)
+    app.keep(AMEBO_SECRET, secret)

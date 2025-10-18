@@ -27,6 +27,7 @@ BEGIN;
         action text NOT NULL references actions(action),
         deduper text NOT NULL,
         payload text NOT NULL,
+        metadata text,
         timestamped text NOT NULL,
 
         UNIQUE(deduper, payload)

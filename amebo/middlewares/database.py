@@ -5,10 +5,11 @@ from sqlite3 import Connection
 from heaven import Application
 from asyncpg import create_pool
 
-from amebo.constants.literals import DB
+from amebo.constants.literals import AMEBO_SECRET, DB
 from amebo.constants.scripts import initdbscript
 from amebo.utils.structs import Lookup
 from amebo.database.pg import pgscript
+from amebo.utils.helpers import deterministic_uuid
 
 
 ENGINES = {
@@ -18,19 +19,19 @@ ENGINES = {
 
 
 async def connect(app: Application):
-    engine = app.CONFIG('engine').lower()
+    dsn = environ.get('AMEBO_DSN')
+    engine = 'postgres' if dsn else 'sqlite'
     app.keep('engine', engine)
     db = None
     try:
-        if engine.startswith('postgres'): db = await create_pool(environ.get('AMEBO_DSN'))
+        if engine.startswith('postgres'): db = await create_pool(dsn)
         else: db = Connection('amebo.db')
     except Exception as exc:
         print(f'connection middleware failed: {exc}')
         # Set a default connection for testing environments
         if engine.startswith('postgres'):
             db = None  # Will be handled by Executor
-        else:
-            db = Connection(':memory:')  # In-memory SQLite for tests
+        else: db = Connection(':memory:')  # In-memory SQLite for tests
     app.keep(DB, db)
 
 

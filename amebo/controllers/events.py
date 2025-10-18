@@ -73,7 +73,9 @@ async def insert(req: Request, res: Response, ctx: Context):
                 action = {steps.next()}
         '''
         row = await executor.fetch(1).execute(sqls, event.action)
-        if not row: return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, {'error': 'Action can not be used to process any events'})
+        if not row:
+            print(sqls.replace('$1', event.action))
+            return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, {'error': 'Action can not be used to process any events'})
 
         schemata = loads(row[0])  # load the schemata from the db
         if isinstance(schemata, str): schemata = loads(schemata)
@@ -83,17 +85,18 @@ async def insert(req: Request, res: Response, ctx: Context):
         validation(event.payload)
 
         table = f'{executor.schema}events'
-        fields = ['action', 'payload', 'deduper', 'timestamped',]
+        fields = ['action', 'payload', 'metadata', 'deduper', 'timestamped',]
         values = [
             event.action,
             dumps(event.payload).decode(),
+            dumps(event.metadata).decode(),
             event.deduper,
             event.timestamped.isoformat()
         ]
 
-        sqls = f'''INSERT INTO {table} ({', '.join(fields)}) VALUES ({steps.reset.next(4)}) RETURNING rowid;'''
+        sqls = f'''INSERT INTO {table} ({', '.join(fields)}) VALUES ({steps.reset.next(5)}) RETURNING rowid;'''
         eventid = await executor.fetch(1).execute(sqls, *values)
-        sleep_until = None
+        sleep_until = datetime.now()
         if event.sleep_until:
             sleep_until = datetime.now() + timedelta(seconds = event.sleep_until)
 
@@ -101,11 +104,12 @@ async def insert(req: Request, res: Response, ctx: Context):
             INSERT INTO
                 {executor.schema}gists(event, subscription, completed, retries, sleep_until, timestamped)
             SELECT
-                {eventid[0]}, subscription, 0, 0, '{sleep_until.isoformat() if sleep_until else None}', '{event.timestamped.isoformat()}'
+                {eventid[0]}, subscription, 0, 0, '{sleep_until.isoformat()}', '{event.timestamped.isoformat()}'
             FROM {executor.schema}subscriptions WHERE action = {steps.reset.next()}
         '''
         await executor.fetch(0).execute(sqls, event.action)
-    except JsonSchemaException:
+    except JsonSchemaException as exc:
+        print('This is the unacceptable exception: ', exc)
         return res.out(HTTPStatus.NOT_ACCEPTABLE, {'error': f'Event payload does not conform to {event.action} schema'})
     except ModuleNotFoundError as exc:
         return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
@@ -114,6 +118,7 @@ async def insert(req: Request, res: Response, ctx: Context):
     res.body = {
         'event': eventid[0],
         'payload': event.payload,
+        'metadata': event.metadata,
         'action': event.action,
         'sleep_until': sleep_until,
         'deduper': event.deduper,

@@ -26,7 +26,7 @@ async def tabulate(req: Request, res, ctx: Context):
     executor = ctx.executor
     sqls = f'''
         SELECT
-            subscription, action, application, handler, description, timestamped
+            subscription, action, application, max_retries, handler, description, timestamped
         FROM {executor.schema}subscriptions
             {steps.EQUALS('subscription', _id)}
             {steps.LIKE('application', _application)}
@@ -48,10 +48,11 @@ async def tabulate(req: Request, res, ctx: Context):
         'subscription': subscription,
         'action': action,
         'application': application,
+        'max_retries': max_retries,
         'endpoint': handler,
         'description': description,
         'timestamped': timestamped
-    } for subscription, action, application, handler, description, timestamped in rows]
+    } for subscription, action, application, max_retries, handler, description, timestamped in rows]
 
 
 @jsonify
@@ -95,5 +96,4 @@ async def insert(req: Request, res: Response, ctx: Context):
 
     res.status = HTTPStatus.CREATED
     subscriptions.subscription = subscriptionid[0]
-    
     res.body = subscriptions.model_dump()

@@ -34,6 +34,8 @@ button.button.quaternary { background-color: var(--color-quaternary); color: #ff
 button.button.quinary { background-color: var(--color-quinary); color: #fff; }
 .bg-light { background-color: #f9f9f9; }
 
+.card.grid-card { height: 15em; display: flex; align-items: center;  }
+
 .easel { position: relative; overflow-y: scroll; scrollbar-width: 0; }
 .easel::-webkit-scrollbar { display: none; }
 
@@ -53,6 +55,8 @@ button.button.quinary { background-color: var(--color-quinary); color: #fff; }
 .h-100 { height: 100% !important; }
 
 ion-icon { pointer-events: none; }
+.icon-menu { background-color: #d6cdc2; border-radius: .8em; }
+.is-active .icon-menu { background-color: #5b7786; color: #fff; }
 .is-active .svgi { filter: none; }
 .input { border-color: #333; border-radius: 0px; outline: none !important; box-shadow: none !important; }
 
@@ -64,6 +68,8 @@ thead, tfoot, tbody tr { display: table; width: 100%; table-layout: fixed; }
 .table { display: block; }
 .tabs ul li.is-active { border-bottom: 3px solid salmon !important; background-color: #e5eff9; font-weight: 900; }
 .text-align-center { text-align: center; }
+
+.vertical-aligns-middle * { vertical-align: middle !important; }
 
 .w-20em { width: 20em; }
 .w-30em { width: 30em; }

@@ -9,9 +9,16 @@ async def pages(req: Request, res: Response, ctx: Context):
     page = req.params.get('page')
     if page not in ['actions', 'events', 'subscriptions', 'applications', 'gists']:
         page = '404'
-    ctx.keep('amebo_version', __version__)
+    ctx.keep('amebo_version', __version__)  # TODO: deprecate in favor of req.app._.version
     return await res.render(f'{page}.html', req=req)
 
 
 async def login(req: Request, res: Response, ctx: Context):
     return await res.render('login.html', req=req)
+
+
+async def windows(req: Request, res: Response, ctx: Context):
+    page = req.params.get('page')
+    if page not in ['actions', 'events', 'subscriptions', 'applications', 'gists']:
+        page = '404'
+    return await res.render(f'windows/{page}.html', req=req)

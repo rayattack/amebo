@@ -2,15 +2,16 @@ from http import HTTPStatus
 from sqlite3 import Connection, Cursor, IntegrityError
 
 from heaven import Context, Request, Response
-from httpx import AsyncClient
+from httpx import AsyncClient, ReadTimeout
 from orjson import loads
 
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.security import protected
-from amebo.decorators.providers import contextualize
+from amebo.decorators.providers import contextualize, expects
 from amebo.constants.literals import DB, MAX_PAGINATION
 from amebo.utils.helpers import get_pagination, get_timeline
 from amebo.utils.structs import Steps
+from amebo.models.gists import Resubscriptions
 
 
 @jsonify
@@ -80,7 +81,7 @@ async def tabulate(req: Request, res: Response, ctx: Context):
 @contextualize
 async def replay(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
-    id = req.params.get('id')
+    id = int(req.params.get('id'))
     
     steps = Steps(req.app._.engine)
     executor = ctx.executor
@@ -88,29 +89,31 @@ async def replay(req: Request, res: Response, ctx: Context):
     try:
         gist = await executor.fetch(1).execute(f'''
             SELECT
-                s.handler AS endpoint, e.payload, a.secret, g.rowid as gid
-            FROM gists AS g JOIN subscriptions s ON
+                s.handler AS endpoint, e.payload, e.metadata, a.secret, g.rowid as gid
+            FROM _amebo_.gists AS g JOIN _amebo_.subscriptions s ON
                 g.subscription = s.subscription
-            JOIN events e ON
+            JOIN _amebo_.events e ON
                 g.event = e.event
-            JOIN applications a ON
+            JOIN _amebo_.applications a ON
                 s.application = a.application
             WHERE g.rowid = {steps.next()};
-        ''', (id,))
+        ''', id)
     except Exception as exc:
         res.status = HTTPStatus.BAD_REQUEST
         res.body = {'error': f'{exc}'}
         return
 
     if not gist: return res.out(HTTPStatus.NOT_FOUND, {'error': 'Gist not found'})
+    endpoint, payload, metadata, secret, gid = gist
 
     try:
         sender = AsyncClient()
-
-        endpoint, payload, secret, gid = gist
         headers = {'content-type': 'application/json', 'x-pass-phrase': secret}
 
-        response = await sender.post(endpoint, json=loads(payload), headers=headers)
+        response = await sender.post(endpoint, json={
+            'metadata': loads(metadata) if metadata else {},
+            'payload': loads(payload)
+        }, headers=headers)
         if response.status_code not in [HTTPStatus.ACCEPTED, HTTPStatus.OK]:
             raise ConnectionRefusedError('Endpoint maybe offline, failed to handle gist')
     except ConnectionRefusedError as exc:
@@ -119,15 +122,24 @@ async def replay(req: Request, res: Response, ctx: Context):
         except: proxied = None
         res.body = {'gist': gid, 'proxied': proxied, 'error': f'{exc}'}
         return
+    except ReadTimeout:
+        res.status = HTTPStatus.ACCEPTED
+        res.body = {'gist': gid}
     except Exception as exc:
         res.status = HTTPStatus.BAD_GATEWAY
         res.body = {'error': f'{exc}'}
         return
-    finally:
-        await sender.aclose()
+    finally: await sender.aclose()
 
     res.satus = HTTPStatus.ACCEPTED
     try: proxied = response.json()
     except: proxied = None
     res.body = {'gist': gid, 'proxied': proxied}
     return
+
+
+@jsonify
+@contextualize
+@expects(Resubscriptions)
+async def time_travel(req: Request, res: Response, ctx: Context):
+    pass

@@ -53,7 +53,7 @@ async def authenticate(req: Request, res: Response, ctx: Context):
     token = tokenize({
         'scheme': credential.scheme,
         'username': username,
-    }, req.app.CONFIG('AMEBO_SECRET'))
+    }, req.app.peek(AMEBO_SECRET))
     res.headers = 'Set-Cookie', f'Authentication={token}; Path=/; HttpOnly; Max-Age={60*10}; SameSite=Strict; Secure'
     res.status = HTTPStatus.ACCEPTED
     res.body = {'token': token}

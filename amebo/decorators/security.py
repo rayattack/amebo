@@ -8,7 +8,7 @@ from amebo.constants.literals import AMEBO_SECRET
 
 
 async def authenticate(req: Request, res: Response, ctx: Context):
-    sk = req.app.CONFIG(AMEBO_SECRET)
+    sk = req.app.peek(AMEBO_SECRET)
     def leave():
         res.headers = 'Location', '/'
         return res.out(HTTPStatus.TEMPORARY_REDIRECT, None)
@@ -27,7 +27,7 @@ async def authenticate(req: Request, res: Response, ctx: Context):
 
 def authorization(func):
     async def delegate(req: Request, res: Response, ctx: Context):
-        sk = req.app.CONFIG(AMEBO_SECRET)
+        sk = req.app.peek(AMEBO_SECRET)
         authorization = req.headers.get('authorization')
         authentication = req.cookies.get('Authentication')
 
@@ -54,7 +54,7 @@ def authorization(func):
 
 def protected(func):
     async def delegate(req: Request, res: Response, ctx: Context):
-        sk = req.app.CONFIG(AMEBO_SECRET)
+        sk = req.app.peek(AMEBO_SECRET)
         def leave():
             res.headers = 'Location', '/'
             return res.out(HTTPStatus.TEMPORARY_REDIRECT, None)
@@ -62,7 +62,6 @@ def protected(func):
         # TODO: remove secret from ui and use withCredentials as we use the cookie to get it from the tokens cache
         #TODO: Change checking for secret in handlers to checking for producer name as authorization and identification is done here
         authentication = req.cookies.get('Authentication')
-        # import pdb; pdb.set_trace()
         if not authentication: return leave()
 
         try: metadata = decode(authentication, sk, algorithms='HS256')

@@ -117,7 +117,7 @@
                 <th>Application</th>
                 <th>Action</th>
                 <th>Endpoint</th>
-                <th>Max Retries</th>
+                <th style="width: 5%; text-overflow: ellipsis; overflow: hidden; white-space: nowrap">Max Retries</th>
                 <th>Timestamped</th>
             </thead>
             <tbody x-init="() => { calculateHeight($el, 100); }">
@@ -132,7 +132,7 @@
                                 class="font-size-sm"
                             ></code>
                         </td>
-                        <td x-text="sub.max_retries"></td>
+                        <td x-text="sub.max_retries" style="width: 5%"></td>
                         <td x-text="sub.timestamped"></td>
                     </tr>
                 </template>

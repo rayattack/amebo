@@ -6,17 +6,14 @@ from heaven import Application
 from heaven.constants import STARTUP, SHUTDOWN
 
 # src code
+from amebo import __version__
 from amebo.aproko import aproko
-from amebo.constants.literals import AMEBO_SECRET
-from amebo.utils.helpers import deterministic_uuid
 
 
 router = Application({
-    'engine': environ.get('AMEBO_DSN') or 'sqlite',
     'envelope_size': int(environ.get('AMEBO_ENVELOPE') or 256),  # how many tasks to fetch at once for processing
     'idles': 5,  # sleep for 5 seconds
     'rest_when': 0,  # reduce frequency of daemons when tasks less than 5
-    AMEBO_SECRET: environ.get('AMEBO_SECRET') or deterministic_uuid()
 })
 
 
@@ -28,6 +25,7 @@ router.TEMPLATES('templates', relative_to=__file__)
 
 # set up hooks
 router.ON(STARTUP, 'amebo.middlewares.database.connect')
+router.ON(STARTUP, lambda app: app.keep('version', __version__))
 router.ON(STARTUP, 'amebo.middlewares.database.cache')
 router.ON(SHUTDOWN, 'amebo.middlewares.database.disconnect')
 router.ON(STARTUP, 'amebo.middlewares.database.initialize')
@@ -46,6 +44,7 @@ router.POST('/v8/tokens', 'amebo.controllers.applications.authenticate')
 # web ui- views/pages/screens
 router.GET('/', 'amebo.controllers.xui.login')
 router.GET('/p/:page', 'amebo.controllers.xui.pages')
+router.GET('/w/:page', 'amebo.controllers.xui.windows')
 
 
 # api
@@ -60,6 +59,7 @@ router.POST('/v1/events', 'amebo.controllers.events.insert')
 router.POST('/v1/applications', 'amebo.controllers.applications.insert')
 router.POST('/v1/subscriptions', 'amebo.controllers.subscriptions.insert')
 router.POST('/v1/regists/:id', 'amebo.controllers.gists.replay')
+router.GET('/v1/regists', 'amebo.controllers.gists.time_travel')
 router.PUT('/v1/applications/:id', 'amebo.controllers.applications.update')
 
 # maybe add a route to clear cache of compiled schemas ?
