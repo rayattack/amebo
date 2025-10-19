@@ -23,7 +23,7 @@ async def aproko(router: Router):
     if executor.db is None and executor.engine and executor.engine.startswith('postgres'):
         print("Warning: Database connection not available, aproko daemon will not run")
         return False
-    async def notify(endpoint: str, data: dict, metadata: dict, secret: str, gist_id: int, attempt_number: int):
+    async def notify(endpoint: str, data: dict, metadata: dict, secret: str, gist_id: int, attempt_number: int, action: str):
         headers = {
             'Content-Type': 'application/json',
             'X-PASS-Phrase': secret,
@@ -38,10 +38,11 @@ async def aproko(router: Router):
             
             # Keep original structure - don't modify metadata
             result = await client.post(endpoint, json={
+                'action': action,
                 'metadata': metadata,  # Untouched from publisher
                 'payload': data
             }, headers=headers)
-            
+
             if 200 <= result.status_code < 300: accepters.append(int(gist_id))
             else: rejecters.append(int(gist_id))
         except ReadTimeout:
@@ -73,7 +74,8 @@ async def aproko(router: Router):
         try:
             gists = await executor.fetch(2).execute(f'''
                 SELECT
-                    s.handler AS endpoint, e.payload, e.metadata, a.secret, g.rowid as gid
+                    s.handler AS endpoint, e.payload, e.metadata, a.secret, g.rowid as gid,
+                    g.retries, e.action
                 FROM {x}gists AS g JOIN {x}events e ON
                     g.event = e.event
                 JOIN {x}subscriptions s ON
@@ -88,10 +90,9 @@ async def aproko(router: Router):
                 ORDER BY g.event LIMIT {router.CONFIG('envelope_size')};
             ''')
 
-            if gists is None:
-                gists = []
+            if gists is None: gists = []
             if len(gists) < router.CONFIG('rest_when'): await sleep(router.CONFIG('idles'))
-            await gather(*[notify(endpoint, loads(payload), loads(metadata), secret, gid) for endpoint, payload, metadata, secret, gid in gists])
+            await gather(*[notify(endpoint, loads(payload), loads(metadata), secret, gid, retries, action) for endpoint, payload, metadata, secret, gid, retries, action in gists])
         except Exception as exc: print('Exception occured: ', exc)
     await traverse()
     return True
