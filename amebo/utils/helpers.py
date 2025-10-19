@@ -1,3 +1,6 @@
+import hashlib, hmac
+
+from orjson import dumps
 from datetime import datetime, timedelta
 from uuid import UUID, uuid5, getnode
 
@@ -53,3 +56,13 @@ def deterministic_uuid():
     null = UUID("00000000-0000-0000-0000-000000000000")
     return uuid5(null, name = str(getnode())).hex
 
+
+def datasigner(payload: dict, secret_key: str):
+    """Sign payload HMAC with secret key"""
+    sb = secret_key.encode('utf-8')
+    return hmac.new(sb, dumps(payload), hashlib.sha256).hexdigest()
+
+
+def datachecker(payload, signature, secret_key):
+    """Check if payload is signed with secret key"""
+    return hmac.compare_digest(signature, datasigner(payload, secret_key))

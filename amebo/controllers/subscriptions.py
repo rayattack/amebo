@@ -3,12 +3,13 @@ from http import HTTPStatus
 from sqlite3 import Connection, Cursor
 
 from heaven import Context, Request, Response
+from orjson import loads
 
 from amebo.constants.literals import DB, MAX_PAGINATION
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import contextualize, expects
 from amebo.models.subscriptions import Subscriptions
-from amebo.utils.helpers import get_pagination, get_timeline
+from amebo.utils.helpers import get_pagination, get_timeline, datachecker
 from amebo.utils.structs import Steps
 
 
@@ -61,23 +62,26 @@ async def tabulate(req: Request, res, ctx: Context):
 async def insert(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     subscriptions: Subscriptions = ctx.subscriptions
-    
+    request_signature = req.headers.get('x-amebo-signature')
+
     steps = Steps(req.app._.engine)
     executor = ctx.executor
-
     try:
-        sqls = f'SELECT address FROM {executor.schema}applications WHERE application = {steps.next()} AND secret = {steps.next()}'
-        rows = await executor.fetch(1).execute(sqls, *(subscriptions.application, subscriptions.secret))
+        sqls = f'SELECT address, secret FROM {executor.schema}applications WHERE application = {steps.next()}'
+        rows = await executor.fetch(1).execute(sqls, subscriptions.application)
     except Exception as exc:
         return res.out(HTTPStatus.BAD_REQUEST, {'error': f'Invalid data submmitted {exc}'})
-
     if not rows: return res.out(HTTPStatus.EXPECTATION_FAILED, {'error': 'Subscription request rejected'})
-    try:
-        row = rows[0]
-        host = row.strip('/')
-    except: return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, 'Can not process the event with information provided')
-    address = f'{host}{subscriptions.handler}'
 
+    try:
+        address, secret = rows
+        host = address.strip('/')
+    except: return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, 'Can not process the event with information provided')
+
+    if not datachecker(loads(req.body), request_signature, secret):
+        return res.out(HTTPStatus.UNAUTHORIZED, 'Invalid signature')
+
+    address = f'{host}{subscriptions.handler}'
     fields = ('application', 'action', 'max_retries', 'handler', 'timestamped',)
     values = (
         subscriptions.application,  # subscribing application
@@ -91,7 +95,6 @@ async def insert(req: Request, res: Response, ctx: Context):
         sqls = f'''INSERT INTO {executor.schema}subscriptions ({', '.join(fields)}) VALUES ({steps.reset.next(5)}) RETURNING rowid;'''
         subscriptionid = await executor.execute(sqls, *values)
     except Exception as exc:
-        print(exc)
         return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
 
     res.status = HTTPStatus.CREATED

@@ -9,6 +9,10 @@ from pydantic import Field, field_validator
 from amebo.models.actions import Action
 
 
+class Ack(Model):
+    acknowledged: int
+
+
 class Resubscriptions(Model):
-    subscription: int
+    subscription: str
     timeline: datetime

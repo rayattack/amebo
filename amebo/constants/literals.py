@@ -9,3 +9,5 @@ REDIS = 'redis'
 
 AMEBO_SECRET = 'AMEBO_SECRET'
 SQLITE = 'sqlite'
+
+X_AMEBO_SIGNATURE = 'x-amebo-signature'

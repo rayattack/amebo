@@ -1,3 +1,4 @@
+from datetime import datetime
 from http import HTTPStatus
 from sqlite3 import Connection, Cursor, IntegrityError
 
@@ -11,7 +12,22 @@ from amebo.decorators.providers import contextualize, expects
 from amebo.constants.literals import DB, MAX_PAGINATION
 from amebo.utils.helpers import get_pagination, get_timeline
 from amebo.utils.structs import Steps
-from amebo.models.gists import Resubscriptions
+from amebo.models.gists import Resubscriptions, Ack
+
+
+@jsonify
+@expects(Ack)
+@contextualize
+async def acknowledge(req: Request, res: Response, ctx: Context):
+    identifier = req.params.get('id')
+    steps = Steps(req.app._.engine)
+    executor = ctx.executor
+    sqls = f'''
+        UPDATE {executor.schema}gists SET acknowledged = {steps.next()} WHERE rowid = {steps.next()}
+    '''
+    try: await executor.fetch(0).execute(sqls, ctx.ack.acknowledged, identifier)
+    except: return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Gist not acknowledged'})
+    return res.out(HTTPStatus.ACCEPTED, {'acknowledged': identifier, 'timestamped': datetime.now().isoformat()})
 
 
 @jsonify
@@ -81,7 +97,7 @@ async def tabulate(req: Request, res: Response, ctx: Context):
 @contextualize
 async def replay(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
-    id = int(req.params.get('id'))
+    id = req.params.get('id')
     
     steps = Steps(req.app._.engine)
     executor = ctx.executor
@@ -89,14 +105,14 @@ async def replay(req: Request, res: Response, ctx: Context):
     try:
         gist = await executor.fetch(1).execute(f'''
             SELECT
-                s.handler AS endpoint, e.payload, e.metadata, a.secret, g.rowid as gid
+                s.handler AS endpoint, e.payload, e.metadata, a.secret, g.gist as gid
             FROM _amebo_.gists AS g JOIN _amebo_.subscriptions s ON
                 g.subscription = s.subscription
             JOIN _amebo_.events e ON
                 g.event = e.event
             JOIN _amebo_.applications a ON
                 s.application = a.application
-            WHERE g.rowid = {steps.next()};
+            WHERE g.gist = {steps.next()};
         ''', id)
     except Exception as exc:
         res.status = HTTPStatus.BAD_REQUEST

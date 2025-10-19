@@ -9,8 +9,9 @@ from httpx import AsyncClient, ReadTimeout, Timeout
 from orjson import loads
 
 # src code
-from amebo.constants.literals import DB
+from amebo.constants.literals import DB, X_AMEBO_SIGNATURE
 from amebo.decorators.providers import Executor
+from amebo.utils.helpers import datasigner
 
 
 async def aproko(router: Router):
@@ -23,31 +24,27 @@ async def aproko(router: Router):
     if executor.db is None and executor.engine and executor.engine.startswith('postgres'):
         print("Warning: Database connection not available, aproko daemon will not run")
         return False
+
     async def notify(endpoint: str, data: dict, metadata: dict, secret: str, gist_id: int, attempt_number: int, action: str):
+        payload= {'action': action, 'metadata': metadata, 'payload': data}
         headers = {
             'Content-Type': 'application/json',
-            'X-PASS-Phrase': secret,
-            'X-Amebo-Event-ID': str(gist_id),  # For idempotency
-            'X-Amebo-Delivery-Attempt': str(attempt_number)  # Our delivery tracking
+            X_AMEBO_SIGNATURE: datasigner(payload, secret),
+            'x-amebo-event-id': gist_id,  # For idempotency
+            'x-amebo-delivery-attempt': str(attempt_number),  # Our delivery tracking
         }
 
         client = None
         try:
             timeout = Timeout(10.0, connect=5.0)
             client = AsyncClient(timeout=timeout)
-            
-            # Keep original structure - don't modify metadata
-            result = await client.post(endpoint, json={
-                'action': action,
-                'metadata': metadata,  # Untouched from publisher
-                'payload': data
-            }, headers=headers)
+            result = await client.post(endpoint, json=payload, headers=headers)
 
-            if 200 <= result.status_code < 300: accepters.append(int(gist_id))
-            else: rejecters.append(int(gist_id))
+            if 200 <= result.status_code < 300: accepters.append(gist_id)
+            else: rejecters.append(gist_id)
         except ReadTimeout:
-            await mark_as_timeout(gist_id, endpoint)
-            
+            # we don't care - we sent it so move on and mark completed if acknowledged later then great
+            accepters.append(gist_id)
         except Exception as exc:
             print(f'Exception occurred: {exc} for {endpoint}')
             rejecters.append(gist_id)
@@ -95,6 +92,7 @@ async def aproko(router: Router):
             await gather(*[notify(endpoint, loads(payload), loads(metadata), secret, gid, retries, action) for endpoint, payload, metadata, secret, gid, retries, action in gists])
         except Exception as exc: print('Exception occured: ', exc)
     await traverse()
+
     return True
 
 

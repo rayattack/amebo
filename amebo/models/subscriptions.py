@@ -10,11 +10,10 @@ from amebo.models.actions import Action
 
 
 class Subscriptions(Model):
-    subscription: Optional[int] = None
+    subscription: Optional[str] = None
     application: str
     action: str
     handler: str
-    secret: str
     max_retries: Optional[int] = Field(le=10_000, ge=1, default=3)
     timestamped: datetime = Field(default_factory=datetime.now)
 

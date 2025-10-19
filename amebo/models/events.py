@@ -9,8 +9,6 @@ from pydantic import Field, field_validator
 
 class Events(Model):
     action: str = Field(...)
-    secret: str
-    event: Optional[int] = None
     deduper: str
     sleep_until: Optional[int]  # number of seconds to sleep until
     metadata: Optional[Union[str, dict]] = Field(default_factory=dict)
