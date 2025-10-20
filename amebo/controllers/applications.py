@@ -3,6 +3,7 @@ from inspect import iscoroutinefunction
 from sqlite3 import Connection, Cursor, IntegrityError
 
 # installed libs
+from asyncpg import UniqueViolationError
 from bcrypt import checkpw
 from heaven import Context, Request, Response
 
@@ -105,7 +106,7 @@ async def insert(req: Request, res: Response, ctx: Context):
         sqls = f'''INSERT INTO {executor.schema}applications(application, address, secret, timestamped) VALUES ({steps.next(4)})'''
         print(sqls)
         await executor.execute(sqls, *values)
-    except IntegrityError as exc:
+    except (UniqueViolationError, IntegrityError) as exc:
         res.status = HTTPStatus.CONFLICT
         res.body = {'error': f'{exc}'}
         return
@@ -116,7 +117,7 @@ async def insert(req: Request, res: Response, ctx: Context):
 
     res.status = HTTPStatus.CREATED
     res.body = {
-        'name': application.application,
+        'name': str(application.application),
         'address': str(application.address),
         'secret': application.secret,
         'timestamped': application.timestamped

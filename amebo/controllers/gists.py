@@ -9,8 +9,8 @@ from orjson import loads
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.security import protected
 from amebo.decorators.providers import contextualize, expects
-from amebo.constants.literals import DB, MAX_PAGINATION
-from amebo.utils.helpers import get_pagination, get_timeline
+from amebo.constants.literals import DB, MAX_PAGINATION, X_AMEBO_SIGNATURE
+from amebo.utils.helpers import get_pagination, get_timeline, datasigner
 from amebo.utils.structs import Steps
 from amebo.models.gists import Resubscriptions, Ack
 
@@ -45,7 +45,7 @@ async def tabulate(req: Request, res: Response, ctx: Context):
     executor = ctx.executor
     sqls = f'''
         SELECT
-            g.rowid as gist,
+            g.gist as gist,
             e.action as action,
             case when
                 g.completed <> 0
@@ -64,7 +64,7 @@ async def tabulate(req: Request, res: Response, ctx: Context):
             g.subscription = s.subscription
         JOIN {executor.schema}actions x ON
             s.action = x.action
-        {steps.EQUALS('g.rowid', _gist)}
+        {steps.EQUALS('g.gist', _gist)}
         {steps.LIKE('e.producer', _origin)}
         {steps.EQUALS('g.completed', completed)}
         {steps.LIKE('a.event', _event)}
@@ -84,7 +84,7 @@ async def tabulate(req: Request, res: Response, ctx: Context):
 
     res.status = HTTPStatus.OK
     res.body = [{
-        'gist': gist,
+        'gist': str(gist),
         'action': action,
         'completed': completed,
         'publisher': publisher,
@@ -124,12 +124,9 @@ async def replay(req: Request, res: Response, ctx: Context):
 
     try:
         sender = AsyncClient()
-        headers = {'content-type': 'application/json', 'x-pass-phrase': secret}
-
-        response = await sender.post(endpoint, json={
-            'metadata': loads(metadata) if metadata else {},
-            'payload': loads(payload)
-        }, headers=headers)
+        jsond= {'metadata': loads(metadata) if metadata else {}, 'payload': loads(payload)}
+        headers = {'content-type': 'application/json', X_AMEBO_SIGNATURE: datasigner(jsond, secret)}
+        response = await sender.post(endpoint, json=jsond, headers=headers)
         if response.status_code not in [HTTPStatus.ACCEPTED, HTTPStatus.OK]:
             raise ConnectionRefusedError('Endpoint maybe offline, failed to handle gist')
     except ConnectionRefusedError as exc:
@@ -150,7 +147,7 @@ async def replay(req: Request, res: Response, ctx: Context):
     res.satus = HTTPStatus.ACCEPTED
     try: proxied = response.json()
     except: proxied = None
-    res.body = {'gist': gid, 'proxied': proxied}
+    res.body = {'gist': str(gid), 'proxied': proxied}
     return
 
 

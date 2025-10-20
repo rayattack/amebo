@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 from sqlite3 import Connection, Cursor
 
+from asyncpg import ForeignKeyViolationError, UniqueViolationError
 from heaven import Context, Request, Response
 from orjson import loads
 
@@ -92,11 +93,17 @@ async def insert(req: Request, res: Response, ctx: Context):
     )
 
     try:
-        sqls = f'''INSERT INTO {executor.schema}subscriptions ({', '.join(fields)}) VALUES ({steps.reset.next(5)}) RETURNING rowid;'''
+        sqls = f'''INSERT INTO {executor.schema}subscriptions ({', '.join(fields)}) VALUES ({steps.reset.next(5)}) RETURNING subscription;'''
         subscriptionid = await executor.execute(sqls, *values)
+    except UniqueViolationError as exc:
+        return res.out(HTTPStatus.CONFLICT, {'error': f'{exc}'})
+    except ForeignKeyViolationError as exc:
+        return res.out(HTTPStatus.FORBIDDEN, {'error': f'Action {subscriptions.action} does not exist'})
     except Exception as exc:
+        print('Exception is : ', exc, type(exc))
         return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
 
     res.status = HTTPStatus.CREATED
     subscriptions.subscription = subscriptionid[0]
-    res.body = subscriptions.model_dump()
+    res.body = subscriptions.model_dump(exclude={'subscription'})
+    res.body['subscription'] = str(subscriptions.subscription)

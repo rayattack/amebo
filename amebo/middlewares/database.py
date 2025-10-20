@@ -45,14 +45,13 @@ async def disconnect(app: Application):
 
 async def initialize(app: Application):
     """todo: enable switching db backend between redis, pg, sqlite"""
+    print('Starting the initialization of the database: ............................')
     if app._.engine.startswith('postgres'):
-        await app.peek(DB).execute(pgscript)
+        try: await app.peek(DB).execute(pgscript)
+        except Exception as exc: print('Exception in initdb hook: ', exc)
     else:
-        try:
-            db: Connection = app.peek(DB)
-            db.executescript(initdbscript)
-        except Exception as exc:
-            print('Exception in initdb hook: ', exc)
+        db: Connection = app.peek(DB)
+        db.executescript(initdbscript)
 
 
 def cache(app: Application):

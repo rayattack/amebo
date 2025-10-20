@@ -25,7 +25,7 @@ async def aproko(router: Router):
         print("Warning: Database connection not available, aproko daemon will not run")
         return False
 
-    async def notify(endpoint: str, data: dict, metadata: dict, secret: str, gist_id: int, attempt_number: int, action: str):
+    async def notify(endpoint: str, data: dict, metadata: dict, secret: str, gist_id: str, attempt_number: int, action: str):
         payload= {'action': action, 'metadata': metadata, 'payload': data}
         headers = {
             'Content-Type': 'application/json',
@@ -54,7 +54,7 @@ async def aproko(router: Router):
         try:
             rejections = str(tuple(rejecters)).replace(',)', ')')
             sqls = f'''
-                UPDATE {x}gists SET retries = retries + 1 WHERE rowid IN {rejections};
+                UPDATE {x}gists SET retries = retries + 1 WHERE gist IN {rejections};
             '''
             if rejecters: await executor.fetch(0).execute(sqls)
         except Exception as exc: print('Could not negate in notify: ', exc)
@@ -62,7 +62,7 @@ async def aproko(router: Router):
         try:
             acceptances = str(tuple(accepters)).replace(',)', ')')
             sqls = f'''
-                UPDATE {x}gists SET completed = 1, retries = retries + 1 WHERE rowid IN {acceptances};
+                UPDATE {x}gists SET completed = 1, retries = retries + 1 WHERE gist IN {acceptances};
             '''
             if accepters: await executor.fetch(0).execute(sqls)
         except Exception as exc: print('Could not update in notify: ', exc)
@@ -71,7 +71,7 @@ async def aproko(router: Router):
         try:
             gists = await executor.fetch(2).execute(f'''
                 SELECT
-                    s.handler AS endpoint, e.payload, e.metadata, a.secret, g.rowid as gid,
+                    s.handler AS endpoint, e.payload, e.metadata, a.secret, g.gist as gid,
                     g.retries, e.action
                 FROM {x}gists AS g JOIN {x}events e ON
                     g.event = e.event
@@ -89,7 +89,7 @@ async def aproko(router: Router):
 
             if gists is None: gists = []
             if len(gists) < router.CONFIG('rest_when'): await sleep(router.CONFIG('idles'))
-            await gather(*[notify(endpoint, loads(payload), loads(metadata), secret, gid, retries, action) for endpoint, payload, metadata, secret, gid, retries, action in gists])
+            await gather(*[notify(endpoint, loads(payload), loads(metadata), secret, str(gid), retries, action) for endpoint, payload, metadata, secret, gid, retries, action in gists])
         except Exception as exc: print('Exception occured: ', exc)
     await traverse()
 

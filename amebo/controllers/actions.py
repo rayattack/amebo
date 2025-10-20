@@ -2,15 +2,16 @@ from http import HTTPStatus
 from sqlite3 import Connection, Cursor
 
 # installed libs
+from asyncpg import UniqueViolationError
 from heaven import Context, Request, Response
 from orjson import dumps, loads
 
-from amebo.constants.literals import DB, MAX_PAGINATION
+from amebo.constants.literals import DB, MAX_PAGINATION, X_AMEBO_SIGNATURE
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import contextualize, expects
 from amebo.decorators.providers import cacheschema
 from amebo.models.actions import Action
-from amebo.utils.helpers import get_pagination, get_timeline
+from amebo.utils.helpers import get_pagination, get_timeline, datachecker
 from amebo.utils.structs import Steps
 
 
@@ -58,6 +59,7 @@ async def tabulate(req: Request, res: Response, ctx: Context):
 @expects(Action)
 @contextualize
 async def insert(req: Request, res: Response, ctx: Context):
+    request_signature = req.headers.get(X_AMEBO_SIGNATURE)
     db: Connection = req.app.peek(DB)
     action: Action = ctx.action
     
@@ -74,16 +76,17 @@ async def insert(req: Request, res: Response, ctx: Context):
         if not _application:
             raise ValueError(f'Application {action.application} not found')
         application, secret = _application
-        if(secret != action.secret):
-            return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'Incorrect {application} secret detected'})
+        if not datachecker(loads(req.body), request_signature, secret): raise ValueError('Invalid signature')
     except Exception as exc:
         return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'{exc}'})
-    
+
     try:
         sqls = f'''INSERT INTO {executor.schema}{table}({', '.join(fields)}) VALUES ({steps.reset.next(4)})'''
-        print(sqls)
         await executor.fetch(0).execute(sqls, *values)
-    except Exception as exc: return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
+    except UniqueViolationError:
+        return res.out(HTTPStatus.CONFLICT, {'error': f'Action {action.action} already exists'})
+    except Exception as exc:
+        return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
 
     ctx.keep('schemata', action.schemata)
     res.status = HTTPStatus.CREATED

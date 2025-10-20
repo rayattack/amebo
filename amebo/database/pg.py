@@ -28,7 +28,7 @@ SET search_path TO _amebo_;
     CREATE TABLE IF NOT EXISTS _amebo_.events (
         rowid integer unique generated always as identity,
         event uuid primary key default gen_random_uuid(),
-        action uuid NOT NULL references actions(action),
+        action text NOT NULL references actions(action),
         deduper text NOT NULL,
         payload text NOT NULL,
         metadata text,  -- can be null and is optional, empty object sent if absent
@@ -51,7 +51,7 @@ SET search_path TO _amebo_;
     );
 
     CREATE TABLE IF NOT EXISTS _amebo_.gists (
-        rowid integer primary key generated always as identity,
+        rowid integer unique generated always as identity,
         gist uuid primary key default gen_random_uuid(),
         event uuid references events(event),
         subscription uuid references subscriptions(subscription),
