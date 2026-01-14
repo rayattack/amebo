@@ -8,13 +8,17 @@ from orjson import dumps
 from amebo.utils.structs import Lookup
 
 
+def default(obj):
+    return str(obj)
+
+
 def jsonify(func):
     @wraps(func)
     async def delegate(req, res, ctx: Context):
         if(iscoroutinefunction(func)): await func(req, res, ctx)
         else: func(req, res, ctx)
         res.headers = 'Content-Type', 'application/json'
-        res.body = dumps(res.body)
+        res.body = dumps(res.body, default=default)
     return delegate
 
 

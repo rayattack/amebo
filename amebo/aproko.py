@@ -1,5 +1,5 @@
 from asyncio import gather, sleep
-from datetime import datetime
+from datetime import datetime, timedelta
 from http import HTTPStatus
 from sqlite3 import Connection, Cursor
 
@@ -69,23 +69,58 @@ async def aproko(router: Router):
 
     async def traverse():
         try:
-            gists = await executor.fetch(2).execute(f'''
-                SELECT
-                    s.handler AS endpoint, e.payload, e.metadata, a.secret, g.gist as gid,
-                    g.retries, e.action
-                FROM {x}gists AS g JOIN {x}events e ON
-                    g.event = e.event
-                JOIN {x}subscriptions s ON
-                    s.subscription = g.subscription
-                JOIN {x}actions x ON
-                    e.action = x.action
-                JOIN {x}applications a ON
-                    s.application = a.application
-                WHERE g.completed <> 1
-                AND g.retries < s.max_retries
-                AND (g.sleep_until IS NULL OR g.sleep_until < '{datetime.now().isoformat()}'::timestamp)
-                ORDER BY g.event LIMIT {router.CONFIG('envelope_size')};
-            ''')
+            if executor.engine.startswith('post'):
+                # Enterprise Optimization: SKIP LOCKED
+                # This turns the DB into a concurrent queue by locking rows & hiding them from other workers
+                lease_expiry = (datetime.now() + timedelta(seconds=60)).isoformat()
+                sqls = f'''
+                    WITH picked AS (
+                        SELECT g.gist
+                        FROM {x}gists AS g
+                        JOIN {x}subscriptions s ON s.subscription = g.subscription
+                        WHERE g.completed <> 1
+                        AND g.retries < s.max_retries
+                        AND (g.sleep_until IS NULL OR g.sleep_until < '{datetime.now().isoformat()}'::timestamp)
+                        ORDER BY g.event LIMIT {router.CONFIG('envelope_size')}
+                        FOR UPDATE SKIP LOCKED
+                    ),
+                    leased AS (
+                        UPDATE {x}gists g
+                        SET sleep_until = '{lease_expiry}'::timestamp
+                        FROM picked
+                        WHERE g.gist = picked.gist
+                        RETURNING g.gist
+                    )
+                    SELECT
+                        s.handler AS endpoint, e.payload, e.metadata, a.secret, g.gist as gid,
+                        g.retries, e.action
+                    FROM {x}gists AS g
+                    JOIN leased l ON g.gist = l.gist
+                    JOIN {x}events e ON g.event = e.event
+                    JOIN {x}subscriptions s ON s.subscription = g.subscription
+                    JOIN {x}actions x ON e.action = x.action
+                    JOIN {x}applications a ON s.application = a.application;
+                '''
+            else:
+                sqls = f'''
+                    SELECT
+                        s.handler AS endpoint, e.payload, e.metadata, a.secret, g.gist as gid,
+                        g.retries, e.action
+                    FROM {x}gists AS g JOIN {x}events e ON
+                        g.event = e.event
+                    JOIN {x}subscriptions s ON
+                        s.subscription = g.subscription
+                    JOIN {x}actions x ON
+                        e.action = x.action
+                    JOIN {x}applications a ON
+                        s.application = a.application
+                    WHERE g.completed <> 1
+                    AND g.retries < s.max_retries
+                    AND (g.sleep_until IS NULL OR g.sleep_until < '{datetime.now().isoformat()}'::timestamp)
+                    ORDER BY g.event LIMIT {router.CONFIG('envelope_size')};
+                '''
+
+            gists = await executor.fetch(2).execute(sqls)
 
             if gists is None: gists = []
             if len(gists) < router.CONFIG('rest_when'): await sleep(router.CONFIG('idles'))
