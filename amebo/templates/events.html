@@ -1,36 +1,34 @@
-{% extends 'abase.axml' %}
-
+{% extends 'clean_base.axml' %}
 {% from 'actions.axml' import pagination %}
 
-{% set modal_name = 'Events' %}
-
+{% set modal_name = 'Publish New Event' %}
 
 {% macro commander() %}
 {
     isFilterable: false,
-    oldPagination: pagination,
-
     idSearch: '',
     eventSearch: '',
     deduperSearch: '',
     payloadSearch: '',
     whenFilter: '',
 
+    // Payload Modal State
+    selectedPayload: null,
+    showPayloadModal: false,
+
     filterResults(){
-        let base = `/v1/events?pagination=${100}&page=${page}`
-        if(this.idSearch) base = `${base}&id=${this.idSearch}`
-        if(this.eventSearch) base = `${base}&event=${this.eventSearch}`
-        if(this.deduperSearch) base = `${base}&deduper=${this.deduperSearch}`
-        if(this.payloadSearch) base = `${base}&payload=${this.payloadSearch}`
-        if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
-        fetch(`${base}`)
-        .then(response => response.json())
-        .then(data => {
-            isFiltering = true;
-            events = data;
-        }).catch(err => {
-            ShowFeedback('error', 'Filter operation failed...')
-        })
+        let base = `/v1/events?pagination=${this.pagination}&page=1`
+        if(this.idSearch) base += `&id=${this.idSearch}`
+        if(this.eventSearch) base += `&event=${this.eventSearch}`
+        if(this.deduperSearch) base += `&deduper=${this.deduperSearch}`
+        if(this.payloadSearch) base += `&payload=${this.payloadSearch}`
+        if(this.whenFilter) base += `&timeline=${this.whenFilter}`
+        fetch(base)
+            .then(r => r.json())
+            .then(data => {
+                isFiltering = true;
+                events = data;
+            }).catch(err => ShowFeedback('error', 'Filter operation failed'))
     },
 
     clearFilter(){
@@ -44,16 +42,19 @@
     },
 
     checkDirty(){
-        if(this.idSearch !== '' ||
+        this.isFilterable = (
+            this.idSearch !== '' ||
             this.eventSearch !== '' ||
             this.deduperSearch !== '' ||
-            this.payloadSearch !== '' || this.whenFilter !== ''
-        ) {
-            this.isFilterable = true;
-            return true;
-        }
-        this.isFilterable = false;
-        return false;
+            this.payloadSearch !== '' ||
+            this.whenFilter !== ''
+        );
+        return this.isFilterable;
+    },
+
+    viewPayload(payload) {
+        this.selectedPayload = payload;
+        this.showPayloadModal = true;
     }
 }
 {% endmacro %}
@@ -61,67 +62,172 @@
 
 {% block easel %}
 <section x-data="{{ controller('events') }}">
-    <div><span class="font-800 px-3">Filters:</span></div>
-    <div class="p-3" x-data="{{ commander() }}" x-effect="checkDirty">
-        <span class="display-inline-block">
-            <input type="text" placeholder="a. id" style="width: 5em" x-model="idSearch" />
-            <input type="text" placeholder="search by event name..." style="width: 20em" x-model="eventSearch">
-            <input type="text" placeholder="filter by deduplication code" x-model="deduperSearch">
-            <input style="width: 25em" type="text" placeholder="search in event payload..." x-model="payloadSearch">
-            <select x-model="whenFilter">
-                <option>Select Day</option>
-                <template x-for="[val, txt] in Object.entries({today: 'Today', week: 'This Week', month: 'This Month'})" :key="val">
-                    <option :value="val" x-text="txt"></option>
-                </template>
-            </select>
-            <button @click="filterResults" :disabled="! isFilterable">
-                <ion-icon name="search" class="font-size-xs"></ion-icon>
-                search
-            </button>
-            <button disabled>&nbsp;</button>
-            <button @click.self="clearFilter" :disabled="! isFiltering">
-                clear filter
-                <ion-icon name="leaf-outline" class="font-size-xs"></ion-icon>
-            </button>
-        </span>
-    </div>
+    <div x-data="{{ commander() }}" x-effect="checkDirty">
 
-    <div class="easel" x-init="calculateHeight($el, 10); fetchAll()">
-        <table class="table is-striped is-fullwidth is-hoverable paginated">
-            <thead>
-                <th style="width: 5%">Event</th>
-                <th style="width: 30%">Action</th>
-                <th style="width: 10%">Deduper</th>
-                <th>Payload</th>
-                <th style="width: 20%">Timestamped</th>
-            </thead>
-            <tbody x-init="() => { calculateHeight($el, 100); }" @refresher.window="refreshPage">
-                <template x-for="event in events" :key="event.event">
-                    <tr>
-                        <td x-text="event.event" style="width: 5%"></td>
-                        <td x-text="event.action" style="width: 30%"></td>
-                        <td x-text="event.deduper" style="width: 10%"
-                            class="text-overflow-ellipsis overflow-hidden"></td>
-                        <td x-text="truncate(JSON.stringify(event.payload, undefined, 2), 100)"
-                            class="white-space-nowrap text-overflow-ellipsis overflow-hidden"></td>
-                        <td x-text="event.timestamped" style="width: 20%"></td>
-                    </tr>
-                </template>
-            </tbody>
-            <tfoot style="position: sticky; bottom: 0">
-                <tr>
-                    <th>Event</th>
-                    <th>Action</th>
-                    <th>Deduper</th>
-                    <th>Payload</th>
-                    <th>Timestamped</th>
-                </tr>
-            </tfoot>
-        </table>
-        {{ pagination() }}
+        <!-- Payload Modal -->
+        <div class="modal fade" :class="showPayloadModal ? 'show d-block' : ''" tabindex="-1"
+            style="z-index: 9999; background: rgba(0,0,0,0.5);" x-show="showPayloadModal" x-transition.opacity>
+            <div class="modal-dialog modal-lg modal-dialog-centered" style="max-width: 720px;">
+                <div class="modal-content border-0 shadow-lg" x-data="{ payloadIDE: null }">
+                    <div class="modal-header pb-2">
+                        <div>
+                            <h5 class="modal-title fw-bold mb-0">Event Payload</h5>
+                            <span class="text-xs text-muted-custom"
+                                x-text="selectedPayload ? `${JSON.stringify(selectedPayload, null, 2).split('\\n').length} lines` : ''"></span>
+                        </div>
+                        <button type="button" class="btn-close" @click="showPayloadModal = false; if(payloadIDE) { payloadIDE.destroy(); payloadIDE = null; }"></button>
+                    </div>
+                    <div class="modal-body p-0">
+                        <div class="payload-ace-viewer" x-effect="
+                            if (showPayloadModal && selectedPayload && $el) {
+                                $nextTick(() => {
+                                    if (payloadIDE) { payloadIDE.destroy(); }
+                                    payloadIDE = ace.edit($el);
+                                    payloadIDE.session.setMode('ace/mode/json');
+                                    payloadIDE.setTheme(darkMode ? 'ace/theme/one_dark' : 'ace/theme/chrome');
+                                    payloadIDE.setOptions({
+                                        readOnly: true,
+                                        fontSize: 13,
+                                        fontFamily: 'JetBrains Mono, SF Mono, Fira Code, monospace',
+                                        showPrintMargin: false,
+                                        highlightActiveLine: false,
+                                        highlightGutterLine: false,
+                                        showGutter: true,
+                                        displayIndentGuides: true,
+                                        tabSize: 2,
+                                        wrap: false,
+                                        maxLines: 30,
+                                        minLines: 8
+                                    });
+                                    payloadIDE.setValue(JSON.stringify(selectedPayload, null, 2));
+                                    payloadIDE.clearSelection();
+                                    payloadIDE.gotoLine(1);
+                                });
+                            }
+                        "></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-sm btn-outline-secondary"
+                            @click="if(selectedPayload) { navigator.clipboard.writeText(JSON.stringify(selectedPayload, null, 2)); ShowFeedback('success', 'Copied to clipboard'); }">
+                            <span class="material-icons" style="font-size: 14px; vertical-align: middle;">content_copy</span>
+                            Copy
+                        </button>
+                        <button class="btn btn-sm btn-dark" @click="showPayloadModal = false; if(payloadIDE) { payloadIDE.destroy(); payloadIDE = null; }">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="page-content-scroll">
+            <div class="page-header d-flex align-items-start justify-content-between">
+                <div>
+                    <h1 class="page-title">Events</h1>
+                    <p class="page-subtitle">Real-time system event feed</p>
+                </div>
+                <div class="loading-spinner" x-show="loading" x-transition>
+                    <div class="spinner-border spinner-border-sm"></div>
+                    <span>Loading...</span>
+                </div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="input-icon">
+                    <span class="material-icons">key</span>
+                    <input class="form-control" type="text" placeholder="Event ID" x-model="idSearch"
+                        style="width: 120px;">
+                </div>
+                <div class="input-icon">
+                    <span class="material-icons">bolt</span>
+                    <input class="form-control" type="text" placeholder="Search event types..."
+                        x-model="eventSearch" style="width: 200px;">
+                </div>
+                <div class="input-icon">
+                    <span class="material-icons">merge_type</span>
+                    <input class="form-control" type="text" placeholder="Deduper key"
+                        x-model="deduperSearch" style="width: 140px;">
+                </div>
+                <div class="input-icon flex-grow-1">
+                    <span class="material-icons">data_object</span>
+                    <input class="form-control" type="text" placeholder="Search inside payload..."
+                        x-model="payloadSearch">
+                </div>
+                <select class="form-select" x-model="whenFilter" style="width: 140px;">
+                    <option value="">Any Time</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                </select>
+                <button class="btn btn-dark btn-sm d-inline-flex align-items-center gap-1"
+                    @click="filterResults" :disabled="!isFilterable">
+                    <span class="material-icons" style="font-size: 16px;">search</span>
+                    Search
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" @click="clearFilter"
+                    :disabled="!isFiltering" x-show="isFiltering" x-transition>
+                    Clear
+                </button>
+            </div>
+        </div>
+
+        <div class="page-table-area">
+            <div class="data-table-wrapper" x-init="fetchAll()">
+                <div class="data-table-scroll">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 12%">Event ID</th>
+                                <th style="width: 25%">Action Type</th>
+                                <th style="width: 15%">Deduper</th>
+                                <th>Payload</th>
+                                <th style="width: 20%">Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody @refresher.window="refreshPage">
+                            <template x-for="event in events" :key="event.event">
+                                <tr>
+                                    <td>
+                                        <span class="tag-id" x-text="event.event.substring(0,8) + '...'"></span>
+                                    </td>
+                                    <td>
+                                        <span class="fw-medium" x-text="event.action"></span>
+                                    </td>
+                                    <td>
+                                        <span class="font-mono text-sm text-muted-custom"
+                                            x-text="event.deduper || '—'"></span>
+                                    </td>
+                                    <td>
+                                        <button class="btn-action" @click="viewPayload(event.payload)"
+                                            title="View Payload">
+                                            <span class="material-icons">data_object</span>
+                                            <span>View</span>
+                                        </button>
+                                    </td>
+                                    <td>
+                                        <span class="text-muted-custom text-sm" x-text="event.timestamped"></span>
+                                    </td>
+                                </tr>
+                            </template>
+                            <template x-if="events.length === 0 && !loading">
+                                <tr>
+                                    <td colspan="5">
+                                        <div class="empty-state">
+                                            <span class="material-icons">inbox</span>
+                                            <p>No events found</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+                {{ pagination() }}
+            </div>
+        </div>
+
     </div>
 </section>
 {% endblock %}
+
 
 {% block wizard %}
 <span x-data="{
@@ -129,25 +235,12 @@
     actions: [],
     action: '',
     deduper: '',
-    payload: '',
     secret: '',
+
     fetchActions(){
-        fetch('/v1/actions', {
-            method: 'GET'
-        }).then(res => {
-            if(res.status !== 200) throw Error();
-            return res.json()
-        }).then(data => {
-            this.actions = data;
-        }).catch(err => {
-        })
+        fetch('/v1/actions').then(r => r.json()).then(d => this.actions = d)
     },
-    resetForm(){
-        this.secret = '';
-        this.action = '';
-        this.deduper = '';
-        this.payload = '';
-    },
+
     publishEvent(){
         superpost('/v1/events').send({
             action: this.action,
@@ -155,52 +248,68 @@
             secret: this.secret,
             payload: JSON.parse(this.ide.getValue())
         }).then(res => {
-            supertoast('info', 'Event published successfully')
-            this.resetForm();
+            ShowFeedback('success', 'Event published successfully');
             $dispatch('refresher');
-            showModalContent = false;
+            showModal = false;
         }).catch(err => {
-            supertoast('error', err.response.body.error);
+            supertoast('error', err.response?.body?.error || 'Failed to publish event');
         })
     }
 }">
-    <div class="modal-card-body p-5">
-        <div class="brick">
-            <label class="font-800 mr-2">Action: </label>
-            <div class="select">
-                <select x-model="action" id="" x-init="fetchActions">
-                    <option>Select An Action</option>
-                    <template x-for="dat in actions">
-                        <option :value="dat.action" x-text="`(${dat.id}): ${dat.action}`"></option>
-                    </template>
-                </select>
+    <div class="modal-body">
+        <div class="row g-3 mb-3">
+            <div class="col-6">
+                <label class="form-label-sm">Action Type</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-transparent border-end-0">
+                        <span class="material-icons text-muted" style="font-size: 18px;">bolt</span>
+                    </span>
+                    <select class="form-select border-start-0" x-model="action" x-init="fetchActions">
+                        <option value="">Select Action...</option>
+                        <template x-for="dat in actions">
+                            <option :value="dat.action" x-text="dat.action"></option>
+                        </template>
+                    </select>
+                </div>
+            </div>
+            <div class="col-6">
+                <label class="form-label-sm">Deduplication Key</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-transparent border-end-0">
+                        <span class="material-icons text-muted" style="font-size: 18px;">merge_type</span>
+                    </span>
+                    <input class="form-control border-start-0" type="text"
+                        placeholder="Unique key (optional)" x-model="deduper">
+                </div>
             </div>
         </div>
-        <div class="brick vertical-aligns-middle">
-            <label class="font-800 mr-2 vertical-aligns-middle">Deduper (unique): </label>
-            <input type="text" class="w-30em input" placeholder="Unique deduplication key for event..." x-model="deduper">
-        </div>
-        <div class="brick vertical-aligns-middle">
-            <label class="font-800 mr-2">secret: </label>
-            <div class="control display-inline-block has-icons-right" x-data="{visible: false}">
-                <input :type="visible ? 'text' : 'password'" class="w-30em input" placeholder="Enter secret to publish event..." x-model="secret">
-                <span class="icon is-right" @click="visible = !visible">
-                    <img :src="`/public/icons/${visible ? 'eye' : 'neye'}.svg`" class="pointer-events-all"></img>
-                </span>
+
+        <div class="mb-3">
+            <label class="form-label-sm">Secret Key</label>
+            <div x-data="{visible: false}" class="position-relative">
+                <input :type="visible ? 'text' : 'password'" class="form-control pe-5"
+                    placeholder="App Secret" x-model="secret">
+                <button class="btn btn-link position-absolute end-0 top-50 translate-middle-y text-muted p-1 me-1"
+                    @click="visible = !visible" type="button" style="z-index: 3;">
+                    <span class="material-icons" style="font-size: 18px;"
+                        x-text="visible ? 'visibility' : 'visibility_off'"></span>
+                </button>
             </div>
         </div>
-        <div class="brick">
-            <label class="font-800 mr-2">Payload (JSON): </label>
-            <div id="schemator" style="height: 30em" x-init="() => {
-                ide = ace.edit($el);
-                ide.session.setMode('ace/mode/json');
-            }" @keydown.cmd.s.prevent="() => {
-                supertoast('info', 'Click the save button below to save this action')
-            }"></div>
+
+        <div class="mb-0">
+            <label class="form-label-sm">JSON Payload</label>
+            <div id="schemator" style="height: 280px;"
+                x-init="ide = ace.edit($el); ide.session.setMode('ace/mode/json');"></div>
         </div>
     </div>
-    <div class="modal-card-foot">
-        <button class="button primary" @click="publishEvent">Publish Event</button>
+
+    <div class="modal-footer">
+        <button class="btn btn-sm btn-outline-secondary" @click="showModal = false">Cancel</button>
+        <button class="btn btn-sm btn-dark d-inline-flex align-items-center gap-1" @click="publishEvent">
+            <span class="material-icons" style="font-size: 16px;">cloud_upload</span>
+            Publish Event
+        </button>
     </div>
 </span>
 {% endblock %}

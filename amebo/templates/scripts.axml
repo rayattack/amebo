@@ -16,3 +16,6 @@
 <script src="https://cdn.jsdelivr.net/chartist.js/latest/chartist.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.33.1/ace.min.js" integrity="sha512-58PBCIyyhiDe1VEw2ouZsbUaGzY5vlEXV/WgqGXssAt2sOxRr+g2AxUQ9gsCXFsB8YuTOty6T77aqNmkWCFSog==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.33.1/theme-one_dark.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.33.1/theme-chrome.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.33.1/mode-json.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>

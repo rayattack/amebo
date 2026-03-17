@@ -1,40 +1,37 @@
-{% extends 'abase.axml' %}
-
+{% extends 'clean_base.axml' %}
 {% from 'actions.axml' import pagination %}
 
+{% set modal_name = 'Gist Details' %}
 
 {% macro commander() %}
 {
     isFilterable: false,
-
     originSearch: '',
-    completedFilter: 'all',
+    completedFilter: '',
     destinationSearch: '',
     gistSearch: '',
     eventSearch: '',
     whenFilter: '',
 
     filterResults(){
-        let base = `/v1/gists?pagination=${pagination}&page=${page}`
-        if(this.originSearch) base = `${base}&origin=${this.originSearch}`
-        if(this.completedFilter) base = `${base}&completed=${this.completedFilter}`
-        if(this.destinationSearch) base = `${base}&destination=${this.destinationSearch}`
-        if(this.gistSearch) base = `${base}&gist=${this.gistSearch}`
-        if(this.eventSearch) base = `${base}&event=${this.eventSearch}`
-        if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
-        fetch(`${base}`)
-        .then(response => response.json())
-        .then(data => {
-            isFiltering = true;
-            gists = data;
-        }).catch(err => {
-            ShowFeedback('error', 'Filter operation failed...')
-        })
+        let base = `/v1/gists?pagination=${this.pagination}&page=1`
+        if(this.originSearch) base += `&origin=${this.originSearch}`
+        if(this.completedFilter) base += `&completed=${this.completedFilter}`
+        if(this.destinationSearch) base += `&destination=${this.destinationSearch}`
+        if(this.gistSearch) base += `&gist=${this.gistSearch}`
+        if(this.eventSearch) base += `&event=${this.eventSearch}`
+        if(this.whenFilter) base += `&timeline=${this.whenFilter}`
+        fetch(base)
+            .then(r => r.json())
+            .then(data => {
+                isFiltering = true;
+                gists = data;
+            }).catch(err => ShowFeedback('error', 'Filter operation failed'))
     },
 
     clearFilter(){
         this.originSearch = '';
-        this.completedFilter = 'all';
+        this.completedFilter = '';
         this.destinationSearch = '';
         this.gistSearch = '';
         this.eventSearch = '';
@@ -44,104 +41,18 @@
     },
 
     checkDirty(){
-        if(this.originSearch !== '' ||
-            this.completedFilter !== 'all' ||
+        this.isFilterable = (
+            this.originSearch !== '' ||
+            this.completedFilter !== '' ||
             this.destinationSearch !== '' ||
             this.gistSearch !== '' ||
-            this.eventSearch !== '' || this.whenFilter !== ''
-        ) {
-            this.isFilterable = true;
-            return true;
-        }
-        this.isFilterable = false;
-        return false;
+            this.eventSearch !== '' ||
+            this.whenFilter !== ''
+        );
+        return this.isFilterable;
     }
 }
 {% endmacro %}
-
-
-{% block easel %}
-<section x-data="{{ controller('gists') }}">
-    <div><span class="font-800 pr-3">Filters:</span></div>
-    <div class="pb-3" x-data="{{ commander() }}" x-effect="checkDirty">
-        <span class="display-inline-block">
-            <input type="text" placeholder="origin producer..." style="width: 14em" x-model="originSearch">
-            <select x-model="completedFilter">
-                <option>Is Completed?</option>
-                <template x-for="val in ['True', 'False']" :key="val">
-                    <option :value="val.toLowerCase()" x-text="val" :selected="val === completedFilter"></option>
-                </template>
-            </select>
-            <input type="text" placeholder="destination producer..." style="width: 20em" x-model="destinationSearch">
-            <input type="text" placeholder="gist id..." style="width: 6em" x-model="gistSearch">
-            <input type="text" placeholder="event name..." style="width: 15em" x-model="eventSearch">
-            <select x-model="whenFilter">
-                <template x-for="[val, txt] in Object.entries({day: 'Today', week: 'This Week', month: 'This Month'})" :key="val">
-                    <option :value="val" x-text="txt" :selected="val === whenFilter"></option>
-                </template>
-            </select>
-            <button @click="filterResults" :disabled="! isFilterable">
-                <img src="/public/icons/search.svg" class="svgxs" />
-                search
-            </button>
-            <button disabled>&nbsp;</button>
-            <button @click.self="clearFilter" :disabled="! isFiltering">
-                clear filter
-                <img src="/public/icons/leaf-outline.svg" class="svgxs" />
-            </button>
-        </span>
-    </div>
-
-    <div class="easel" x-init="calculateHeight($el, 10); fetchAll()">
-        <table class="table is-striped is-fullwidth is-hoverable paginated">
-            <thead>
-                <th style="width: 3%">#</th>
-                <th style="width: 5%">Sent</th>
-                <th>Action</th>
-                <th>Publisher</th>
-                <th>Subscriber</th>
-                <th>Endpoint</th>
-                <th>Timestamp</th>
-                <th style="width: 5%">Resend</th>
-            </thead>
-            <tbody x-init="() => { calculateHeight($el, 100); }">
-                <template x-for="gist, tally in gists" :key="gist.gist">
-                    <tr>
-                        <td x-text="gist.gist" style="width: 3%"></td>
-                        <td x-text="gist.completed" style="width: 5%"></td>
-                        <td x-text="gist.action"></td>
-                        <td x-text="gist.publisher"></td>
-                        <td x-text="gist.subscriber"></td>
-                        <td x-text="gist.endpoint"></td>
-                        <td x-text="gist.timestamped"></td>
-                        <td x-data="{{ resendable() }}" style="width: 5%">
-                            <button title="Resend This Gist"
-                                @click="resendGist(gist.gist)"
-                                :class="resending === gist.gist ? 'is-loading' : ''">
-                                <img src="/public/icons/send.svg" class="svgxs"/>
-                            </button>
-                        </td>
-                    </tr>
-                </template>
-            </tbody>
-            <tfoot style="position: sticky; bottom: 0">
-                <tr>
-                    <th style="width: 3%">#</th>
-                    <th style="width: 5%">Sent</th>
-                    <th>Action</th>
-                    <th>Publisher</th>
-                    <th>Subscriber</th>
-                    <th>Endpoint</th>
-                    <th>Timestamp</th>
-                    <th style="width: 5%">Resend</th>
-                </tr>
-            </tfoot>
-        </table>
-        {{ pagination() }}
-    </div>
-</section>
-{% endblock %}
-
 
 {% macro resendable() %}
 {
@@ -152,19 +63,149 @@
             method: 'POST',
             headers: {'Content-Type': 'application/json'}
         })
-        .then(response => response.json())
+        .then(r => r.json())
         .then(data => {
-            if(data.error) {
-                this.resending = null;
-                return ShowFeedback('error', data.error);
-            }
             this.resending = null;
-            ShowFeedback('success', `Gist ${gist} resent...`, 7000);
+            if(data.error) return ShowFeedback('error', data.error);
+            ShowFeedback('success', `Gist ${gist} resent`);
         })
         .catch(err => {
             this.resending = null;
-            ShowFeedback('error', 'Could not resend gist...', 1000)
+            ShowFeedback('error', 'Could not resend gist');
         })
     }
 }
 {% endmacro %}
+
+
+{% block easel %}
+<section x-data="{{ controller('gists') }}">
+    <div x-data="{{ commander() }}" x-effect="checkDirty">
+
+        <div class="page-content-scroll">
+            <div class="page-header d-flex align-items-start justify-content-between">
+                <div>
+                    <h1 class="page-title">Gists</h1>
+                    <p class="page-subtitle">Webhook delivery log and retry management</p>
+                </div>
+                <div class="loading-spinner" x-show="loading" x-transition>
+                    <div class="spinner-border spinner-border-sm"></div>
+                    <span>Loading...</span>
+                </div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="input-icon">
+                    <span class="material-icons">tag</span>
+                    <input class="form-control" type="text" placeholder="Gist ID" x-model="gistSearch"
+                        style="width: 90px;">
+                </div>
+                <div class="input-icon">
+                    <span class="material-icons">upload</span>
+                    <input class="form-control" type="text" placeholder="Origin..."
+                        x-model="originSearch" style="width: 160px;">
+                </div>
+                <div class="input-icon">
+                    <span class="material-icons">download</span>
+                    <input class="form-control" type="text" placeholder="Destination..."
+                        x-model="destinationSearch" style="width: 160px;">
+                </div>
+                <div class="input-icon">
+                    <span class="material-icons">bolt</span>
+                    <input class="form-control" type="text" placeholder="Event name..."
+                        x-model="eventSearch" style="width: 160px;">
+                </div>
+                <select class="form-select" x-model="completedFilter" style="width: 130px;">
+                    <option value="">All Status</option>
+                    <option value="true">Completed</option>
+                    <option value="false">Pending</option>
+                </select>
+                <select class="form-select" x-model="whenFilter" style="width: 130px;">
+                    <option value="">Any Time</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                </select>
+                <button class="btn btn-dark btn-sm d-inline-flex align-items-center gap-1"
+                    @click="filterResults" :disabled="!isFilterable">
+                    <span class="material-icons" style="font-size: 16px;">search</span>
+                    Search
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" @click="clearFilter"
+                    :disabled="!isFiltering" x-show="isFiltering" x-transition>
+                    Clear
+                </button>
+            </div>
+        </div>
+
+        <div class="page-table-area">
+            <div class="data-table-wrapper" x-init="fetchAll()">
+                <div class="data-table-scroll">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 7%">ID</th>
+                                <th style="width: 7%">Status</th>
+                                <th>Action</th>
+                                <th>Publisher</th>
+                                <th>Subscriber</th>
+                                <th>Endpoint</th>
+                                <th style="width: 15%">Timestamp</th>
+                                <th style="width: 7%">Resend</th>
+                            </tr>
+                        </thead>
+                        <tbody @refresher.window="refreshPage">
+                            <template x-for="gist in gists" :key="gist.gist">
+                                <tr>
+                                    <td>
+                                        <span class="tag-id" x-text="gist.gist"></span>
+                                    </td>
+                                    <td>
+                                        <span class="badge-status"
+                                            :class="gist.completed ? 'success' : 'warning'"
+                                            x-text="gist.completed ? 'Sent' : 'Pending'"></span>
+                                    </td>
+                                    <td>
+                                        <span class="fw-medium" x-text="gist.action"></span>
+                                    </td>
+                                    <td>
+                                        <span x-text="gist.publisher"></span>
+                                    </td>
+                                    <td>
+                                        <span x-text="gist.subscriber"></span>
+                                    </td>
+                                    <td>
+                                        <code class="font-mono text-sm" x-text="gist.endpoint"></code>
+                                    </td>
+                                    <td>
+                                        <span class="text-muted-custom text-sm" x-text="gist.timestamped"></span>
+                                    </td>
+                                    <td x-data="{{ resendable() }}">
+                                        <button class="btn-action" @click="resendGist(gist.gist)"
+                                            :disabled="resending === gist.gist" title="Resend">
+                                            <span class="material-icons"
+                                                :class="resending === gist.gist ? 'opacity-25' : ''">replay</span>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                            <template x-if="gists.length === 0 && !loading">
+                                <tr>
+                                    <td colspan="8">
+                                        <div class="empty-state">
+                                            <span class="material-icons">send</span>
+                                            <p>No delivery gists found</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+                {{ pagination() }}
+            </div>
+        </div>
+
+    </div>
+</section>
+{% endblock %}
