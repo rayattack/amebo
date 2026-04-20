@@ -26,7 +26,7 @@ async def acknowledge(req: Request, res: Response, ctx: Context):
         UPDATE {executor.schema}gists SET acknowledged = {steps.next()} WHERE rowid = {steps.next()}
     '''
     try: await executor.fetch(0).execute(sqls, ctx.ack.acknowledged, identifier)
-    except: return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Gist not acknowledged'})
+    except Exception: return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Gist not acknowledged'})
     return res.out(HTTPStatus.ACCEPTED, {'acknowledged': identifier, 'timestamped': datetime.now().isoformat()})
 
 
@@ -77,7 +77,6 @@ async def tabulate(req: Request, res: Response, ctx: Context):
     try:
         rows = await executor.fetch(2).execute(sqls, *steps.values)
     except Exception as exc:
-        print('exc is: ', exc)
         res.status = HTTPStatus.BAD_REQUEST
         res.body = {'error': f'{exc}'}
         return
@@ -132,7 +131,7 @@ async def replay(req: Request, res: Response, ctx: Context):
     except ConnectionRefusedError as exc:
         res.status = HTTPStatus.SERVICE_UNAVAILABLE
         try: proxied = response.json()
-        except: proxied = None
+        except Exception: proxied = None
         res.body = {'gist': gid, 'proxied': proxied, 'error': f'{exc}'}
         return
     except ReadTimeout:
@@ -146,7 +145,7 @@ async def replay(req: Request, res: Response, ctx: Context):
 
     res.satus = HTTPStatus.ACCEPTED
     try: proxied = response.json()
-    except: proxied = None
+    except Exception: proxied = None
     res.body = {'gist': str(gid), 'proxied': proxied}
     return
 

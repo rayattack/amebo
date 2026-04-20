@@ -73,7 +73,7 @@
                         <div>
                             <h5 class="modal-title fw-bold mb-0">Event Payload</h5>
                             <span class="text-xs text-muted-custom"
-                                x-text="selectedPayload ? `${JSON.stringify(selectedPayload, null, 2).split('\\n').length} lines` : ''"></span>
+                                x-text="selectedPayload ? `${prettyJson(selectedPayload).split('\\n').length} lines` : ''"></span>
                         </div>
                         <button type="button" class="btn-close" @click="showPayloadModal = false; if(payloadIDE) { payloadIDE.destroy(); payloadIDE = null; }"></button>
                     </div>
@@ -99,7 +99,7 @@
                                         maxLines: 30,
                                         minLines: 8
                                     });
-                                    payloadIDE.setValue(JSON.stringify(selectedPayload, null, 2));
+                                    payloadIDE.setValue(prettyJson(selectedPayload));
                                     payloadIDE.clearSelection();
                                     payloadIDE.gotoLine(1);
                                 });
@@ -108,7 +108,7 @@
                     </div>
                     <div class="modal-footer">
                         <button class="btn btn-sm btn-outline-secondary"
-                            @click="if(selectedPayload) { navigator.clipboard.writeText(JSON.stringify(selectedPayload, null, 2)); ShowFeedback('success', 'Copied to clipboard'); }">
+                            @click="if(selectedPayload) { navigator.clipboard.writeText(prettyJson(selectedPayload)); ShowFeedback('success', 'Copied to clipboard'); }">
                             <span class="material-icons" style="font-size: 14px; vertical-align: middle;">content_copy</span>
                             Copy
                         </button>

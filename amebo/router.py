@@ -1,3 +1,4 @@
+import logging
 from os import environ
 from uuid import uuid4
 
@@ -8,6 +9,11 @@ from heaven.constants import STARTUP, SHUTDOWN
 # src code
 from amebo import __version__
 from amebo.aproko import aproko
+
+logging.basicConfig(
+    level=getattr(logging, environ.get('AMEBO_LOG_LEVEL', 'INFO').upper(), logging.INFO),
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+)
 
 
 router = Application({
@@ -27,10 +33,12 @@ router.TEMPLATES('templates', relative_to=__file__)
 router.ON(STARTUP, 'amebo.middlewares.database.connect')
 router.ON(STARTUP, lambda app: app.keep('version', __version__))
 router.ON(STARTUP, 'amebo.middlewares.database.cache')
-router.ON(SHUTDOWN, 'amebo.middlewares.database.disconnect')
 router.ON(STARTUP, 'amebo.middlewares.database.initialize')
+router.ON(STARTUP, 'amebo.middlewares.database.setup_listener')
 router.ON(STARTUP, 'amebo.middlewares.security.upsudo')
 router.ON(STARTUP, 'amebo.middlewares.security.upsecret')
+router.ON(SHUTDOWN, 'amebo.middlewares.database.teardown_listener')
+router.ON(SHUTDOWN, 'amebo.middlewares.database.disconnect')
 
 
 # hooks
@@ -56,12 +64,19 @@ router.GET('/v1/gists', 'amebo.controllers.gists.tabulate')
 router.POST('/v1/gists/:id', 'amebo.controllers.gists.acknowledge')
 router.POST('/v1/tokens', 'amebo.controllers.applications.authenticate')
 router.POST('/v1/actions', 'amebo.controllers.actions.insert')
+router.DELETE('/v1/actions/:id', 'amebo.controllers.actions.remove')
 router.POST('/v1/events', 'amebo.controllers.events.insert')
 router.POST('/v1/applications', 'amebo.controllers.applications.insert')
 router.POST('/v1/subscriptions', 'amebo.controllers.subscriptions.insert')
 router.POST('/v1/regists/:id', 'amebo.controllers.gists.replay')
 router.GET('/v1/regists', 'amebo.controllers.gists.time_travel')
 router.PUT('/v1/applications/:id', 'amebo.controllers.applications.update')
+router.PUT('/v1/applications/:id/secret', 'amebo.controllers.applications.set_secret')
+router.POST('/v1/applications/:id/apikey', 'amebo.controllers.applications.regenerate_apikey')
+router.PATCH('/v1/applications/:id', 'amebo.controllers.applications.toggle_active')
+router.GET('/v1/redactions', 'amebo.controllers.redactions.tabulate')
+router.POST('/v1/redactions', 'amebo.controllers.redactions.insert')
+router.DELETE('/v1/redactions/:id', 'amebo.controllers.redactions.remove')
 
 # maybe add a route to clear cache of compiled schemas ?
 

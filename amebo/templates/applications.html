@@ -1,7 +1,7 @@
 {% extends 'clean_base.axml' %}
 {% from 'actions.axml' import pagination %}
 
-{% set modal_name = 'Register Application' %}
+{% set modal_name = 'Provision Application' %}
 
 {% macro commander() %}
 {
@@ -9,6 +9,8 @@
     nameSearch: '',
     addressSearch: '',
     whenFilter: '',
+    generatedApiKey: null,
+    showApiKeyReveal: false,
 
     filterResults(){
         let base = `/v1/applications?pagination=${this.pagination}&page=1`
@@ -38,6 +40,39 @@
             this.whenFilter !== ''
         );
         return this.isFilterable;
+    },
+
+    async toggleActive(appName){
+        try {
+            const res = await superpatch(`/v1/applications/${appName}`).send({});
+            $dispatch('refresher');
+            supertoast('success', `Application ${res.body.active ? 'activated' : 'deactivated'}`);
+        } catch(err) {
+            supertoast('error', err.response?.body?.error || 'Failed to toggle status');
+        }
+    },
+
+    async regenerateKey(appName){
+        if(!confirm(`Regenerate API key for ${appName}? The old key will stop working immediately.`)) return;
+        try {
+            const res = await superpost(`/v1/applications/${appName}/apikey`).send({});
+            this.generatedApiKey = res.body.apikey;
+            this.showApiKeyReveal = true;
+        } catch(err) {
+            supertoast('error', err.response?.body?.error || 'Failed to regenerate API key');
+        }
+    },
+
+    copyApiKey(){
+        if(this.generatedApiKey){
+            navigator.clipboard.writeText(this.generatedApiKey);
+            supertoast('success', 'API key copied to clipboard');
+        }
+    },
+
+    dismissApiKey(){
+        this.generatedApiKey = null;
+        this.showApiKeyReveal = false;
     }
 }
 {% endmacro %}
@@ -88,16 +123,37 @@
             </div>
         </div>
 
+        <!-- API Key Reveal Banner -->
+        <div x-show="showApiKeyReveal" x-transition class="alert alert-warning mx-3 mt-2 mb-0" role="alert">
+            <div class="d-flex align-items-start gap-2">
+                <span class="material-icons" style="font-size: 20px;">vpn_key</span>
+                <div class="flex-grow-1">
+                    <strong>API Key Generated</strong>
+                    <p class="mb-1 text-sm">Copy this key now. It will not be shown again.</p>
+                    <code class="d-block p-2 bg-dark text-light rounded font-mono text-sm"
+                        style="word-break: break-all;" x-text="generatedApiKey"></code>
+                </div>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-sm btn-outline-dark d-inline-flex align-items-center gap-1" @click="copyApiKey">
+                        <span class="material-icons" style="font-size: 16px;">content_copy</span>
+                        Copy
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" @click="dismissApiKey">Dismiss</button>
+                </div>
+            </div>
+        </div>
+
         <div class="page-table-area">
             <div class="data-table-wrapper" x-init="fetchAll()">
                 <div class="data-table-scroll">
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th style="width: 22%">Name</th>
-                                <th style="width: 35%">Address</th>
-                                <th style="width: 23%">Pass Phrase</th>
-                                <th style="width: 20%">Timestamp</th>
+                                <th style="width: 20%">Name</th>
+                                <th style="width: 32%">Address</th>
+                                <th style="width: 10%">Status</th>
+                                <th style="width: 18%">Timestamp</th>
+                                <th style="width: 20%">Actions</th>
                             </tr>
                         </thead>
                         <tbody @refresher.window="refreshPage">
@@ -109,27 +165,32 @@
                                     <td>
                                         <code class="font-mono text-sm" x-text="app.address"></code>
                                     </td>
-                                    <td x-data="{ revealed: false }">
-                                        <template x-if="!revealed">
-                                            <button class="btn-action" @click="revealed = true">
-                                                <span class="material-icons">visibility</span>
-                                                Reveal
-                                            </button>
-                                        </template>
-                                        <template x-if="revealed">
-                                            <span class="font-mono text-sm cursor-pointer"
-                                                @click="revealed = false"
-                                                x-text="app.secret" title="Click to hide"></span>
-                                        </template>
+                                    <td>
+                                        <span class="badge"
+                                            :class="app.active ? 'bg-success' : 'bg-secondary'"
+                                            x-text="app.active ? 'Active' : 'Inactive'"></span>
                                     </td>
                                     <td>
                                         <span class="text-muted-custom text-sm" x-text="app.timestamped"></span>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex gap-1">
+                                            <button class="btn-action" @click="toggleActive(app.application)"
+                                                :title="app.active ? 'Deactivate' : 'Activate'">
+                                                <span class="material-icons" style="font-size: 16px;"
+                                                    x-text="app.active ? 'pause_circle' : 'play_circle'"></span>
+                                            </button>
+                                            <button class="btn-action" @click="regenerateKey(app.application)"
+                                                title="Regenerate API Key">
+                                                <span class="material-icons" style="font-size: 16px;">vpn_key</span>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             </template>
                             <template x-if="applications.length === 0 && !loading">
                                 <tr>
-                                    <td colspan="4">
+                                    <td colspan="5">
                                         <div class="empty-state">
                                             <span class="material-icons">layers</span>
                                             <p>No applications registered</p>
@@ -155,13 +216,13 @@
     port: '',
     scheme: 'http',
     address: '',
-    secret: '',
+    createdApiKey: null,
 
     resetForm(){
         this.application = '';
-        this.secret = '';
         this.address = '';
         this.port = '';
+        this.createdApiKey = null;
     },
 
     get Address(){
@@ -172,58 +233,90 @@
     saveApplication(){
         superpost('/v1/applications').send({
             application: this.application,
-            address: this.Address,
-            secret: this.secret
+            address: this.Address
         }).then(res => {
-            ShowFeedback('success', 'Application created');
-            this.resetForm();
+            this.createdApiKey = res.body.apikey;
             $dispatch('refresher');
-            showModal = false;
         }).catch(err => {
             supertoast('error', err.response?.body?.error || 'Failed to create application');
         })
+    },
+
+    copyCreatedKey(){
+        if(this.createdApiKey){
+            navigator.clipboard.writeText(this.createdApiKey);
+            supertoast('success', 'API key copied to clipboard');
+        }
+    },
+
+    closeAndReset(){
+        this.resetForm();
+        showModal = false;
     }
 }">
-    <div class="modal-body">
-        <div class="mb-3">
-            <label class="form-label-sm">Application Name</label>
-            <div class="input-group">
-                <span class="input-group-text bg-transparent border-end-0">
-                    <span class="material-icons text-muted" style="font-size: 18px;">layers</span>
-                </span>
-                <input type="text" class="form-control border-start-0"
-                    placeholder="e.g. payment-service" x-model="application">
+    <!-- Creation form -->
+    <template x-if="!createdApiKey">
+        <div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label-sm">Application Name</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-transparent border-end-0">
+                            <span class="material-icons text-muted" style="font-size: 18px;">layers</span>
+                        </span>
+                        <input type="text" class="form-control border-start-0"
+                            placeholder="e.g. paymentservice" x-model="application">
+                    </div>
+                </div>
+
+                <div class="mb-0">
+                    <label class="form-label-sm">Address</label>
+                    <div class="d-flex gap-2">
+                        <select class="form-select" x-model="scheme" style="width: 100px;">
+                            <option value="http">HTTP</option>
+                            <option value="https">HTTPS</option>
+                        </select>
+                        <input type="text" class="form-control" placeholder="host or IP address..."
+                            x-model="address">
+                        <input type="text" class="form-control" placeholder="Port" x-model="port"
+                            style="width: 90px;">
+                    </div>
+                    <div class="form-text font-mono text-sm mt-1" x-text="Address"></div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-outline-secondary" @click="showModal = false">Cancel</button>
+                <button class="btn btn-sm btn-dark d-inline-flex align-items-center gap-1" @click="saveApplication">
+                    <span class="material-icons" style="font-size: 16px;">save</span>
+                    Provision Application
+                </button>
             </div>
         </div>
+    </template>
 
-        <div class="mb-3">
-            <label class="form-label-sm">Address</label>
-            <div class="d-flex gap-2">
-                <select class="form-select" x-model="scheme" style="width: 100px;">
-                    <option value="http">HTTP</option>
-                    <option value="https">HTTPS</option>
-                </select>
-                <input type="text" class="form-control" placeholder="host or IP address..."
-                    x-model="address">
-                <input type="text" class="form-control" placeholder="Port" x-model="port"
-                    style="width: 90px;">
+    <!-- API Key reveal after creation -->
+    <template x-if="createdApiKey">
+        <div>
+            <div class="modal-body">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <span class="material-icons text-success" style="font-size: 24px;">check_circle</span>
+                    <strong>Application provisioned successfully</strong>
+                </div>
+                <p class="text-sm mb-2">Copy the API key below and provide it to the application owner. This key will not be shown again.</p>
+                <div class="position-relative">
+                    <code class="d-block p-3 bg-dark text-light rounded font-mono text-sm"
+                        style="word-break: break-all;" x-text="createdApiKey"></code>
+                </div>
             </div>
-            <div class="form-text font-mono text-sm mt-1" x-text="Address"></div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-dark d-inline-flex align-items-center gap-1" @click="copyCreatedKey">
+                    <span class="material-icons" style="font-size: 16px;">content_copy</span>
+                    Copy API Key
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" @click="closeAndReset">Done</button>
+            </div>
         </div>
-
-        <div class="mb-0">
-            <label class="form-label-sm">Secret / Passphrase</label>
-            <textarea class="form-control" rows="4" placeholder="Paste or enter the application secret..."
-                x-model="secret"></textarea>
-        </div>
-    </div>
-
-    <div class="modal-footer">
-        <button class="btn btn-sm btn-outline-secondary" @click="showModal = false">Cancel</button>
-        <button class="btn btn-sm btn-dark d-inline-flex align-items-center gap-1" @click="saveApplication">
-            <span class="material-icons" style="font-size: 16px;">save</span>
-            Save Application
-        </button>
-    </div>
+    </template>
 </span>
 {% endblock %}

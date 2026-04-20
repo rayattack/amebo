@@ -3,15 +3,16 @@ from http import HTTPStatus
 from sqlite3 import Connection
 from uuid import uuid4
 
-from fastjsonschema import JsonSchemaException, compile
+from fastjsonschema import JsonSchemaException
 from heaven import Context, Request, Response
 from orjson import dumps, loads
 
 from amebo.constants.literals import DB, MAX_PAGINATION
 from amebo.decorators.formatters import jsonify
-from amebo.decorators.providers import contextualize, expects
+from amebo.decorators.providers import contextualize, expects, _compile_schema
 from amebo.models.events import Events
-from amebo.utils.helpers import get_pagination, get_timeline, datachecker
+from amebo.utils.helpers import get_pagination, get_timeline, datachecker, redact_payload
+from amebo.controllers.redactions import fetch_redacted_paths
 from amebo.utils.structs import Steps
 
 
@@ -28,15 +29,15 @@ async def tabulate(req: Request, res: Response, ctx: Context):
     executor = ctx.executor
 
     sqls = f'''SELECT
-            event, action, payload, deduper, timestamped, COUNT(*) AS results
-        FROM {executor.schema}events
-            {steps.EQUALS('event', _id)}
-            {steps.LIKE('action', _action)}
-            {steps.LIKE('payload', _payload)}
-            {steps.EQUALS('deduper', _deduper)}
-            {get_timeline(_timeline, steps)}
+            e.event, e.action, e.payload, e.deduper, e.timestamped, COUNT(*) AS results
+        FROM {executor.schema}events e
+            {steps.EQUALS('e.event', _id)}
+            {steps.LIKE('e.action', _action)}
+            {steps.LIKE('e.payload', _payload)}
+            {steps.EQUALS('e.deduper', _deduper)}
+            {get_timeline(_timeline, steps, column='e.timestamped')}
         GROUP BY
-            event, action, deduper, payload, timestamped
+            e.event, e.action, e.deduper, e.payload, e.timestamped
         LIMIT {pagination if pagination < MAX_PAGINATION else MAX_PAGINATION}
         OFFSET {(page - 1) * pagination};
     '''
@@ -44,11 +45,17 @@ async def tabulate(req: Request, res: Response, ctx: Context):
     except Exception as exc:
         return res.out(HTTPStatus.BAD_REQUEST, [])
 
+    # batch-fetch private field paths for all actions in this page
+    actions_seen = set(row[1] for row in rows)
+    redactions_by_action = {}
+    for action_name in actions_seen:
+        redactions_by_action[action_name] = await fetch_redacted_paths(executor, action_name)
+
     res.status = HTTPStatus.OK
     res.body = [{
         'event': event,
         'action': action,
-        'payload': loads(payload),
+        'payload': redact_payload(redactions_by_action.get(action, []), loads(payload)),
         'deduper': deduper,
         'timestamped': timestamped
     } for event, action, payload, deduper, timestamped, results in rows]
@@ -72,27 +79,22 @@ async def insert(req: Request, res: Response, ctx: Context):
                 {executor.schema}actions
             JOIN {executor.schema}applications app ON app.application = actions.application
             WHERE
-                action = {steps.next()}
+                action = {steps.next()} AND app.active = 1
         '''
         row = await executor.fetch(1).execute(sqls, event.action)
         if not row:
-            print(sqls.replace('$1', event.action))
             return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, {'error': 'Action can not be used to process any events'})
 
         schemata, application, app_secret = row
         if not datachecker(loads(req.body), req.headers.get('x-amebo-signature'), app_secret):
             return res.out(HTTPStatus.UNAUTHORIZED, 'Invalid signature')
 
-        # compile the json schema to improve performance on repeated firings of same event
+        # compile the json schema with LRU cache (bounded to 1024 entries)
         # AND validate event payload to ensure we are only sending valid contractual payload
         # to subscribed endpoints
-        # we can use a constrained dict later i.e. max 1000 events in memory based on
-        # something like LRU
-        if isinstance(schemata, str): schemata = loads(schemata)
-        schemas = req.app.peek('schematas')  # get the compiled schematas
-        if not schemas.get(event.action):
-            schemas[event.action] = compile(schemata)
-        validation = schemas.get(event.action)
+        if isinstance(schemata, str): schema_json = schemata
+        else: schema_json = dumps(schemata).decode()
+        validation = _compile_schema(schema_json)
         validation(event.payload)
 
         table = f'{executor.schema}events'
@@ -121,16 +123,21 @@ async def insert(req: Request, res: Response, ctx: Context):
             FROM {executor.schema}subscriptions WHERE action = {steps.reset.next()}
         '''
         await executor.fetch(0).execute(sqls, event.action)
+
+        # Wake aproko daemon instantly via PG LISTEN/NOTIFY (no-op for SQLite)
+        if executor.engine.startswith('post'):
+            await executor.fetch(0).execute("SELECT pg_notify('aproko_wake', '')")
     except JsonSchemaException as exc:
         return res.out(HTTPStatus.NOT_ACCEPTABLE, {'error': f'Event payload does not conform to {event.action} schema'})
     except ModuleNotFoundError as exc:
         return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
 
+    redacted_paths = await fetch_redacted_paths(executor, event.action)
     res.status = HTTPStatus.CREATED
     res.body = {
         'event': identifier,
         'row_id': rowid[0],
-        'payload': event.payload,
+        'payload': redact_payload(redacted_paths, event.payload),
         'metadata': event.metadata,
         'action': event.action,
         'sleep_until': sleep_until,

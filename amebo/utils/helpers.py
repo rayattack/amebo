@@ -1,5 +1,6 @@
-import hashlib, hmac
+import hashlib, hmac, secrets
 
+from bcrypt import checkpw, gensalt, hashpw
 from orjson import dumps
 from datetime import datetime, timedelta
 from uuid import UUID, uuid5, getnode
@@ -14,13 +15,13 @@ HS256 = 'HS256'
 
 
 def get_pagination(req: Request):
-    try: page = int(req.params.get('page'))
-    except: page = 1
-    else: page = 1 if page < 0 else page
+    try: page = int(req.queries.get('page'))
+    except (TypeError, ValueError): page = 1
+    else: page = 1 if page < 1 else page
 
-    try: pagination = int(req.params.get('pagination'))
-    except: pagination = DEFAULT_PAGINATION
-    else: pagination = DEFAULT_PAGINATION if pagination < 0 else pagination
+    try: pagination = int(req.queries.get('pagination'))
+    except (TypeError, ValueError): pagination = DEFAULT_PAGINATION
+    else: pagination = DEFAULT_PAGINATION if pagination < 1 else pagination
     return page, pagination
 
 
@@ -66,3 +67,58 @@ def datasigner(payload: dict, secret_key: str):
 def datachecker(payload, signature, secret_key):
     """Check if payload is signed with secret key"""
     return hmac.compare_digest(signature, datasigner(payload, secret_key))
+
+
+def generate_apikey():
+    """Generate a plaintext API key and its bcrypt hash.
+    Returns (plaintext_key, hashed_key)."""
+    plaintext = f'amebo_{secrets.token_hex(32)}'
+    hashed = hashpw(plaintext.encode(), gensalt()).decode()
+    return plaintext, hashed
+
+
+def verify_apikey(plaintext, hashed):
+    """Verify a plaintext API key against its bcrypt hash."""
+    return checkpw(plaintext.encode(), hashed.encode())
+
+
+REDACTED = '**redacted**'
+
+def redact_payload(field_paths: list, payload):
+    """Redact fields using dot-notation paths from the redactions table.
+    Supports nested paths (address.zip) and array paths (items[].serial)."""
+    if not isinstance(payload, dict) or not field_paths:
+        return payload
+
+    from copy import deepcopy
+    result = deepcopy(payload)
+
+    for path in field_paths:
+        _redact_path(result, path.split('.'))
+
+    return result
+
+
+def _redact_path(obj, segments):
+    """Walk into obj following segments and redact the leaf."""
+    if not segments:
+        return
+
+    head = segments[0]
+    rest = segments[1:]
+
+    if head.endswith('[]'):
+        key = head[:-2]
+        if key in obj and isinstance(obj[key], list):
+            if not rest:
+                obj[key] = REDACTED
+            else:
+                for item in obj[key]:
+                    if isinstance(item, dict):
+                        _redact_path(item, rest)
+    elif not rest:
+        if head in obj:
+            obj[head] = REDACTED
+    else:
+        if head in obj and isinstance(obj[head], dict):
+            _redact_path(obj[head], rest)

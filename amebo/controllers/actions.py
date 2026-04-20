@@ -6,12 +6,13 @@ from asyncpg import UniqueViolationError
 from heaven import Context, Request, Response
 from orjson import dumps, loads
 
-from amebo.constants.literals import DB, MAX_PAGINATION, X_AMEBO_SIGNATURE
+from amebo.constants.literals import DB, MAX_PAGINATION, X_AMEBO_SIGNATURE, X_AMEBO_REDACT, AMEBO_SECRET
+from amebo.controllers.redactions import bulk_insert_redactions
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import contextualize, expects
 from amebo.decorators.providers import cacheschema
 from amebo.models.actions import Action
-from amebo.utils.helpers import get_pagination, get_timeline, datachecker
+from amebo.utils.helpers import get_pagination, get_timeline, datachecker, untokenize
 from amebo.utils.structs import Steps
 
 
@@ -71,12 +72,22 @@ async def insert(req: Request, res: Response, ctx: Context):
     values = (action.action, action.application, dumps(action.schemata).decode(), action.timestamped.isoformat())
 
     try:
-        sqls = f'''select application, secret from {executor.schema}applications where application = {steps.next()}'''
+        sqls = f'''select application, secret from {executor.schema}applications where application = {steps.next()} AND active = 1'''
         _application = await executor.fetch(1).execute(sqls, action.application)
         if not _application:
             raise ValueError(f'Application {action.application} not found')
         application, secret = _application
-        if not datachecker(loads(req.body), request_signature, secret): raise ValueError('Invalid signature')
+        body = loads(req.body)
+        if request_signature:
+            if not datachecker(body, request_signature, secret): raise ValueError('Invalid signature')
+        else:
+            # allow admin JWT cookie as fallback (for UI-based action creation)
+            admin_auth = req.cookies.get('Authentication')
+            if admin_auth:
+                try: untokenize(admin_auth, req.app.peek(AMEBO_SECRET))
+                except Exception: raise ValueError('Invalid admin credentials')
+            elif body.get('secret') != secret:
+                raise ValueError('Invalid secret')
     except Exception as exc:
         return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'{exc}'})
 
@@ -88,7 +99,74 @@ async def insert(req: Request, res: Response, ctx: Context):
     except Exception as exc:
         return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
 
+    # handle x-amebo-redact header: space-separated field paths
+    redact_header = req.headers.get(X_AMEBO_REDACT)
+    if redact_header:
+        field_paths = redact_header.split(' ')
+        await bulk_insert_redactions(executor, action.action, field_paths)
+
     ctx.keep('schemata', action.schemata)
     res.status = HTTPStatus.CREATED
     res.body = action.model_dump()
+
+
+@jsonify
+@contextualize
+async def remove(req: Request, res: Response, ctx: Context):
+    sk = req.app.peek(AMEBO_SECRET)
+    authentication = req.cookies.get('Authentication')
+    if not authentication:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Admin authentication required'})
+    try: metadata = untokenize(authentication, sk)
+    except Exception:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Invalid admin credentials'})
+    if metadata.get('scheme') != 'password':
+        return res.out(HTTPStatus.FORBIDDEN, {'error': 'Admin privileges required to delete actions'})
+
+    action_name = req.params.get('id')
+    executor = ctx.executor
+
+    steps = Steps(req.app._.engine)
+    sqls = f'SELECT action FROM {executor.schema}actions WHERE action = {steps.next()}'
+    row = await executor.fetch(1).execute(sqls, action_name)
+    if not row:
+        return res.out(HTTPStatus.NOT_FOUND, {'error': f'Action {action_name} not found'})
+
+    try:
+        steps = Steps(req.app._.engine)
+        await executor.fetch(0).execute(
+            f'''DELETE FROM {executor.schema}gists
+                WHERE event IN (SELECT event FROM {executor.schema}events WHERE action = {steps.next()})
+                   OR subscription IN (SELECT subscription FROM {executor.schema}subscriptions WHERE action = {steps.next()})''',
+            action_name, action_name,
+        )
+
+        steps = Steps(req.app._.engine)
+        await executor.fetch(0).execute(
+            f'DELETE FROM {executor.schema}events WHERE action = {steps.next()}',
+            action_name,
+        )
+
+        steps = Steps(req.app._.engine)
+        await executor.fetch(0).execute(
+            f'DELETE FROM {executor.schema}subscriptions WHERE action = {steps.next()}',
+            action_name,
+        )
+
+        steps = Steps(req.app._.engine)
+        await executor.fetch(0).execute(
+            f'DELETE FROM {executor.schema}redactions WHERE action = {steps.next()}',
+            action_name,
+        )
+
+        steps = Steps(req.app._.engine)
+        await executor.fetch(0).execute(
+            f'DELETE FROM {executor.schema}actions WHERE action = {steps.next()}',
+            action_name,
+        )
+    except Exception as exc:
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+
+    res.status = HTTPStatus.ACCEPTED
+    res.body = {'removed': action_name}
 

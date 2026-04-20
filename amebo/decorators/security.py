@@ -1,3 +1,4 @@
+import logging
 from http import HTTPStatus
 from inspect import iscoroutinefunction
 
@@ -5,6 +6,8 @@ from heaven import Context, Request, Response
 from jwt import decode, encode
 
 from amebo.constants.literals import AMEBO_SECRET
+
+logger = logging.getLogger('amebo.auth')
 
 
 async def authenticate(req: Request, res: Response, ctx: Context):
@@ -19,7 +22,7 @@ async def authenticate(req: Request, res: Response, ctx: Context):
     if not authentication: return leave()
 
     try: metadata = decode(authentication, sk, algorithms='HS256')
-    except: return leave()
+    except Exception: return leave()
 
     # keep metadata for use later in pages if required
     ctx.keep('metadata', metadata)
@@ -37,10 +40,10 @@ def authorization(func):
         try:
             if authorization: _, token = authorization.split(' ', 1)
             else: token = authentication
-        except: return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process your credentials'})
+        except Exception: return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process your credentials'})
 
         try: metadata = decode(token, sk, algorithms='HS256')
-        except: return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Invalid credentials detected'})
+        except Exception: return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Invalid credentials detected'})
 
         # user producer name to use for token lookup from global app state
         producer = metadata.get('producer')
@@ -65,7 +68,7 @@ def protected(func):
         if not authentication: return leave()
 
         try: metadata = decode(authentication, sk, algorithms='HS256')
-        except: return leave()
+        except Exception: return leave()
 
         # keep metadata for use later in pages if required
         ctx.keep('metadata', metadata)

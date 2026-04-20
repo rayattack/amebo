@@ -52,51 +52,94 @@
 
     <!-- Preview Mode -->
     <template x-if="previewing">
-        <div x-data="{ readOnlyIDE: null }" class="preview-layout">
-            <!-- Top bar -->
-            <div class="preview-topbar">
-                <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
-                    @click="previewing = null">
-                    <span class="material-icons" style="font-size: 16px;">arrow_back</span>
-                    Back to Actions
-                </button>
-                <div class="d-flex align-items-center gap-3">
-                    <span class="fw-semibold" x-text="previewing.action"></span>
+        <div x-data="{
+            readOnlyIDE: null,
+            isAdmin: {{ 'true' if ctx.metadata and ctx.metadata.scheme == 'password' else 'false' }},
+            deleting: false,
+            deleteAction(){
+                const name = previewing.action;
+                const confirmed = confirm(
+                    `Delete action '${name}'?\n\n` +
+                    `This will permanently remove the action along with ALL of its events, subscriptions, gists, and redactions. This cannot be undone.`
+                );
+                if(!confirmed) return;
+                this.deleting = true;
+                fetch(`/v1/actions/${encodeURIComponent(name)}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                }).then(async r => {
+                    const body = await r.json().catch(() => ({}));
+                    if(!r.ok) throw body;
+                    ShowFeedback('success', `Action '${name}' deleted`);
+                    previewing = null;
+                    $dispatch('refresher');
+                }).catch(err => {
+                    ShowFeedback('error', err?.error || 'Failed to delete action');
+                }).finally(() => { this.deleting = false; });
+            }
+        }" class="preview-layout">
+            <!-- Top: back button + title -->
+            <div class="page-content-scroll pb-0">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                        @click="previewing = null">
+                        <span class="material-icons" style="font-size: 16px;">arrow_back</span>
+                        Back
+                    </button>
+                    <h1 class="page-title mb-0" x-text="previewing.action"></h1>
                     <span class="badge bg-secondary bg-opacity-10 text-secondary"
                         x-text="previewing.application"></span>
+                    <template x-if="isAdmin">
+                        <button class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1 ms-auto"
+                            @click="deleteAction" :disabled="deleting">
+                            <span class="material-icons" style="font-size: 16px;">delete_forever</span>
+                            <span x-text="deleting ? 'Deleting...' : 'Delete Action'"></span>
+                        </button>
+                    </template>
                 </div>
             </div>
 
-            <!-- Content: sidebar + editor -->
-            <div class="preview-body">
-                <!-- Left: detail info -->
-                <div class="preview-sidebar">
-                    <h6 class="text-xs fw-bold text-uppercase text-muted-custom mb-3" style="letter-spacing: 0.5px;">Details</h6>
-                    <div class="detail-field">
-                        <span class="field-label">Application</span>
-                        <span class="field-value" x-text="previewing.application"></span>
+            <!-- Cards row filling remaining height -->
+            <div class="preview-cards">
+                <!-- Detail card -->
+                <div class="detail-panel preview-detail-card">
+                    <div class="detail-panel-header">
+                        <h6 class="fw-bold mb-0">Details</h6>
                     </div>
-                    <div class="detail-field">
-                        <span class="field-label">Created</span>
-                        <span class="field-value" x-text="previewing.timestamped"></span>
+                    <div class="detail-panel-body">
+                        <div class="detail-field">
+                            <span class="field-label">Application</span>
+                            <span class="field-value" x-text="previewing.application"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Created</span>
+                            <span class="field-value" x-text="previewing.timestamped"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Events</span>
+                            <span class="field-value" x-text="`${previewing.successful || 0} / ${previewing.tally || 0}`"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Subscribers</span>
+                            <span class="field-value" x-text="previewing.subscribers || 0"></span>
+                        </div>
                     </div>
-                    <div class="detail-field">
-                        <span class="field-label">Events</span>
-                        <span class="field-value" x-text="`${previewing.successful || 0} / ${previewing.tally || 0}`"></span>
-                    </div>
-                    <div class="detail-field">
-                        <span class="field-label">Subscribers</span>
-                        <span class="field-value" x-text="previewing.subscribers || 0"></span>
-                    </div>
-
-                    <div class="mt-3 pt-3" style="border-top: 1px solid var(--amebo-border-subtle);">
+                    <div class="detail-panel-footer">
                         <span class="text-xs text-muted-custom"
-                            x-text="`${JSON.stringify(previewing.schemata || {}, null, 2).split('\\n').length} lines · ${JSON.stringify(previewing.schemata || {}, null, 2).length} chars`"></span>
+                            x-text="`${prettyJson(previewing.schemata || {}).split('\\n').length} lines · ${prettyJson(previewing.schemata || {}).length} chars`"></span>
                     </div>
                 </div>
 
-                <!-- Right: ACE editor fills remaining space -->
-                <div class="preview-editor">
+                <!-- Schema card filling remaining width + full height -->
+                <div class="detail-panel preview-schema-card">
+                    <div class="detail-panel-header">
+                        <h6 class="fw-bold mb-0">JSON Schema</h6>
+                        <button class="btn-action"
+                            @click="navigator.clipboard.writeText(typeof previewing.schemata === 'string' ? previewing.schemata : prettyJson(previewing.schemata || {})); ShowFeedback('success', 'Copied to clipboard')">
+                            <span class="material-icons">content_copy</span>
+                            Copy
+                        </button>
+                    </div>
                     <div class="preview-editor-ace" x-init="() => {
                         readOnlyIDE = ace.edit($el);
                         readOnlyIDE.session.setMode('ace/mode/json');
@@ -115,7 +158,7 @@
                         });
                         const val = typeof previewing.schemata === 'string'
                             ? previewing.schemata
-                            : JSON.stringify(previewing.schemata || {}, null, 2);
+                            : prettyJson(previewing.schemata || {});
                         readOnlyIDE.setValue(val);
                         readOnlyIDE.clearSelection();
                         readOnlyIDE.gotoLine(1);
@@ -234,7 +277,6 @@
     applications: [],
     application: '',
     action: '',
-    secret: '',
 
     fetchApplications(){
         fetch('/v1/applications')
@@ -245,7 +287,6 @@
 
     resetForm(){
         this.application = '';
-        this.secret = '';
         this.action = '';
         if(this.ide) this.ide.setValue('');
     },
@@ -254,7 +295,6 @@
         superpost('/v1/actions').send({
             application: this.application,
             schemata: this.ide.getValue(),
-            secret: this.secret,
             action: this.action
         }).then(res => {
             ShowFeedback('success', 'Action created');
@@ -278,28 +318,14 @@
             </div>
         </div>
 
-        <div class="row g-3 mb-3">
-            <div class="col-6">
-                <label class="form-label-sm">Application</label>
-                <select class="form-select" x-model="application" x-init="fetchApplications">
-                    <option value="">Select Application...</option>
-                    <template x-for="app in applications">
-                        <option :value="app.application" x-text="app.application"></option>
-                    </template>
-                </select>
-            </div>
-            <div class="col-6">
-                <label class="form-label-sm">Secret Key</label>
-                <div x-data="{visible: false}" class="position-relative">
-                    <input :type="visible ? 'text' : 'password'" class="form-control pe-5"
-                        placeholder="App Secret" x-model="secret">
-                    <button class="btn btn-link position-absolute end-0 top-50 translate-middle-y text-muted p-1 me-1"
-                        @click="visible = !visible" type="button" style="z-index: 3;">
-                        <span class="material-icons" style="font-size: 18px;"
-                            x-text="visible ? 'visibility' : 'visibility_off'"></span>
-                    </button>
-                </div>
-            </div>
+        <div class="mb-3">
+            <label class="form-label-sm">Application</label>
+            <select class="form-select" x-model="application" x-init="fetchApplications" aria-label="Application">
+                <option value="">Select Application...</option>
+                <template x-for="app in applications">
+                    <option :value="app.application" x-text="app.application"></option>
+                </template>
+            </select>
         </div>
 
         <div class="mb-0">

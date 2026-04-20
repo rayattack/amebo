@@ -68,7 +68,7 @@ async def insert(req: Request, res: Response, ctx: Context):
     steps = Steps(req.app._.engine)
     executor = ctx.executor
     try:
-        sqls = f'SELECT address, secret FROM {executor.schema}applications WHERE application = {steps.next()}'
+        sqls = f'SELECT address, secret FROM {executor.schema}applications WHERE application = {steps.next()} AND active = 1'
         rows = await executor.fetch(1).execute(sqls, subscriptions.application)
     except Exception as exc:
         return res.out(HTTPStatus.BAD_REQUEST, {'error': f'Invalid data submmitted {exc}'})
@@ -77,7 +77,7 @@ async def insert(req: Request, res: Response, ctx: Context):
     try:
         address, secret = rows
         host = address.strip('/')
-    except: return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, 'Can not process the event with information provided')
+    except Exception: return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, 'Can not process the event with information provided')
 
     if not datachecker(loads(req.body), request_signature, secret):
         return res.out(HTTPStatus.UNAUTHORIZED, 'Invalid signature')
@@ -98,9 +98,9 @@ async def insert(req: Request, res: Response, ctx: Context):
     except UniqueViolationError as exc:
         return res.out(HTTPStatus.CONFLICT, {'error': f'{exc}'})
     except ForeignKeyViolationError as exc:
+        print(exc)
         return res.out(HTTPStatus.FORBIDDEN, {'error': f'Action {subscriptions.action} does not exist'})
     except Exception as exc:
-        print('Exception is : ', exc, type(exc))
         return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
 
     res.status = HTTPStatus.CREATED

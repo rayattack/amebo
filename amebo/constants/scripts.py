@@ -11,7 +11,9 @@ BEGIN;
     CREATE TABLE IF NOT EXISTS applications (
         application text primary key,
         address text NOT NULL,
-        secret text NOT NULL,
+        secret text NOT NULL DEFAULT '',
+        apikey text,
+        active integer NOT NULL DEFAULT 1,
         timestamped text NOT NULL
     );
 
@@ -55,6 +57,14 @@ BEGIN;
         timestamped text NOT NULL,
 
         UNIQUE(event, subscription)
+    );
+
+    CREATE TABLE IF NOT EXISTS redactions (
+        action text NOT NULL references actions(action),
+        field_path text NOT NULL,
+        timestamped text NOT NULL,
+
+        UNIQUE(action, field_path)
     );
 COMMIT;
 '''

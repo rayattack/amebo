@@ -13,7 +13,9 @@ SET search_path TO _amebo_;
         rowid integer unique generated always as identity,
         application text primary key,
         address text NOT NULL,
-        secret text NOT NULL,
+        secret text NOT NULL DEFAULT '',
+        apikey text,
+        active integer NOT NULL DEFAULT 1,
         timestamped text NOT NULL
     );
 
@@ -63,6 +65,19 @@ SET search_path TO _amebo_;
 
         UNIQUE(event, subscription)
     );
+
+    CREATE TABLE IF NOT EXISTS _amebo_.redactions (
+        rowid integer unique generated always as identity,
+        action text NOT NULL references actions(action),
+        field_path text NOT NULL,
+        timestamped text NOT NULL,
+
+        UNIQUE(action, field_path)
+    );
+
+    -- migrations for existing databases
+    ALTER TABLE _amebo_.applications ADD COLUMN IF NOT EXISTS apikey text;
+    ALTER TABLE _amebo_.applications ADD COLUMN IF NOT EXISTS active integer NOT NULL DEFAULT 1;
 
 SET search_path TO public;
 '''

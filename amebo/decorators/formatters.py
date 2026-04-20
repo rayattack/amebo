@@ -46,7 +46,7 @@ def queries(schema: dict):
                 # dict.values might give you results out of order if key order changed
                 kind, default = param.get('kind'), param.get('default')
                 try: value = kind(req.queries.get(param))
-                except: value = default
+                except Exception: value = default
                 else: qp[param] = value
             ctx.keep('queryparams', qp)
             return await func(req, res, ctx)

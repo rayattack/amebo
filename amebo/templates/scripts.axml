@@ -16,6 +16,49 @@
 <script src="https://cdn.jsdelivr.net/chartist.js/latest/chartist.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.33.1/ace.min.js" integrity="sha512-58PBCIyyhiDe1VEw2ouZsbUaGzY5vlEXV/WgqGXssAt2sOxRr+g2AxUQ9gsCXFsB8YuTOty6T77aqNmkWCFSog==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+// json-stringify-pretty-compact v4.0.0 (MIT) — inlined for non-ESM usage
+// https://github.com/lydell/json-stringify-pretty-compact
+window.prettyJson = function(passedObj, options) {
+  options = options || {};
+  const stringOrChar = /("(?:[^\\"]|\\.)*")|[:,]/g;
+  const indent = JSON.stringify([1], undefined, options.indent === undefined ? 2 : options.indent).slice(2, -3);
+  const maxLength = indent === "" ? Infinity : (options.maxLength === undefined ? 80 : options.maxLength);
+  let replacer = options.replacer;
+  return (function _stringify(obj, currentIndent, reserved) {
+    if (obj && typeof obj.toJSON === "function") obj = obj.toJSON();
+    const string = JSON.stringify(obj, replacer);
+    if (string === undefined) return string;
+    const length = maxLength - currentIndent.length - reserved;
+    if (string.length <= length) {
+      const prettified = string.replace(stringOrChar, (match, stringLiteral) => stringLiteral || (match + " "));
+      if (prettified.length <= length) return prettified;
+    }
+    if (replacer != null) { obj = JSON.parse(string); replacer = undefined; }
+    if (typeof obj === "object" && obj !== null) {
+      const nextIndent = currentIndent + indent;
+      const items = [];
+      let index = 0, start, end;
+      if (Array.isArray(obj)) {
+        start = "["; end = "]";
+        for (; index < obj.length; index++)
+          items.push(_stringify(obj[index], nextIndent, index === obj.length - 1 ? 0 : 1) || "null");
+      } else {
+        start = "{"; end = "}";
+        const keys = Object.keys(obj);
+        for (; index < keys.length; index++) {
+          const key = keys[index];
+          const keyPart = JSON.stringify(key) + ": ";
+          const value = _stringify(obj[key], nextIndent, keyPart.length + (index === keys.length - 1 ? 0 : 1));
+          if (value !== undefined) items.push(keyPart + value);
+        }
+      }
+      if (items.length > 0) return [start, indent + items.join(",\n" + nextIndent), end].join("\n" + currentIndent);
+    }
+    return string;
+  })(passedObj, "", 0);
+};
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.33.1/theme-one_dark.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.33.1/theme-chrome.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.33.1/mode-json.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>

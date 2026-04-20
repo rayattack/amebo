@@ -87,7 +87,8 @@
           ('actions', 'bolt', 'Actions'),
           ('events', 'notifications_active', 'Events'),
           ('subscriptions', 'rss_feed', 'Subscriptions'),
-          ('gists', 'send', 'Gists')
+          ('gists', 'send', 'Gists'),
+          ('redactions', 'visibility_off', 'Redactions')
         ] %}
 
         {% for endpoint, icon, label in navs %}

@@ -11,9 +11,9 @@ from heaven import Context, Request, Response
 from amebo.constants.literals import DB, AMEBO_SECRET, MAX_PAGINATION
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import contextualize, expects
-from amebo.utils.helpers import get_pagination, get_timeline, tokenize
+from amebo.utils.helpers import get_pagination, get_timeline, tokenize, untokenize, generate_apikey, verify_apikey
 
-from amebo.models.applications import Credential, Location, Application, Token
+from amebo.models.applications import Credential, Location, Application, Token, Provision, SecretUpdate
 from amebo.utils.structs import Steps
 
 
@@ -55,7 +55,7 @@ async def authenticate(req: Request, res: Response, ctx: Context):
         'scheme': credential.scheme,
         'username': username,
     }, req.app.peek(AMEBO_SECRET))
-    res.headers = 'Set-Cookie', f'Authentication={token}; Path=/; HttpOnly; Max-Age={60*10}; SameSite=Strict; Secure'
+    res.headers = 'Set-Cookie', f'Authentication={token}; Path=/; HttpOnly; Max-Age={60*15}; SameSite=Strict; Secure'
     res.status = HTTPStatus.ACCEPTED
     res.body = {'token': token}
 
@@ -71,7 +71,7 @@ async def tabulate(req: Request, res: Response, ctx: Context):
 
     executor = ctx.executor
 
-    sqls = f'''SELECT application, address, timestamped
+    sqls = f'''SELECT application, address, active, timestamped
         FROM {executor.schema}applications
             {steps.LIKE('application', _application)}
             {steps.LIKE('address', _address)}
@@ -89,22 +89,30 @@ async def tabulate(req: Request, res: Response, ctx: Context):
     res.body = [{
         'application': application,
         'address': address,
-        'secret': '****************',
+        'active': bool(active),
         'timestamped': timestamped
-    } for application, address, timestamped in rows]
+    } for application, address, active, timestamped in rows]
 
 
 @jsonify
-@expects(Application)
+@expects(Provision)
 @contextualize
 async def insert(req: Request, res: Response, ctx: Context):
-    application: Application = ctx.application
+    sk = req.app.peek(AMEBO_SECRET)
+    authentication = req.cookies.get('Authentication')
+    if not authentication:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Admin authentication required'})
+    try: untokenize(authentication, sk)
+    except Exception:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Invalid admin credentials'})
+
+    provision: Provision = ctx.provision
+    plaintext_key, hashed_key = generate_apikey()
     steps = Steps(req.app._.engine)
     try:
         executor = ctx.executor
-        values = (str(application.application), str(application.address), application.secret, application.timestamped.isoformat())
-        sqls = f'''INSERT INTO {executor.schema}applications(application, address, secret, timestamped) VALUES ({steps.next(4)})'''
-        print(sqls)
+        values = (str(provision.application), str(provision.address), '', hashed_key, 1, provision.timestamped.isoformat())
+        sqls = f'''INSERT INTO {executor.schema}applications(application, address, secret, apikey, active, timestamped) VALUES ({steps.next(6)})'''
         await executor.execute(sqls, *values)
     except (UniqueViolationError, IntegrityError) as exc:
         res.status = HTTPStatus.CONFLICT
@@ -117,10 +125,10 @@ async def insert(req: Request, res: Response, ctx: Context):
 
     res.status = HTTPStatus.CREATED
     res.body = {
-        'name': str(application.application),
-        'address': str(application.address),
-        'secret': application.secret,
-        'timestamped': application.timestamped
+        'name': str(provision.application),
+        'address': str(provision.address),
+        'apikey': plaintext_key,
+        'timestamped': provision.timestamped
     }
 
 
@@ -173,3 +181,104 @@ def tokens(req: Request, res: Response, ctx: Context):
     res.status = HTTPStatus.ACCEPTED
     res.headers = 'set-cookie', '#cookie body here'
     res.body = {'token': token}
+
+
+@jsonify
+@expects(SecretUpdate)
+@contextualize
+async def set_secret(req: Request, res: Response, ctx: Context):
+    authorization = req.headers.get('authorization')
+    if not authorization:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Authorization header required'})
+
+    try:
+        scheme, key = authorization.split(' ', 1)
+        if scheme.lower() != 'bearer': raise ValueError()
+    except Exception:
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Expected Authorization: Bearer <apikey>'})
+
+    application_name = req.params.get('id')
+    executor = ctx.executor
+    steps = Steps(req.app._.engine)
+
+    try:
+        sqls = f'SELECT application, apikey, active FROM {executor.schema}applications WHERE application = {steps.next()}'
+        row = await executor.fetch(1).execute(sqls, application_name)
+    except Exception:
+        return res.out(HTTPStatus.INTERNAL_SERVER_ERROR, {'error': 'Database error'})
+
+    if not row:
+        return res.out(HTTPStatus.NOT_FOUND, {'error': 'Application not found'})
+
+    app_name, apikey_hash, active = row
+    if not active:
+        return res.out(HTTPStatus.FORBIDDEN, {'error': 'Application is disabled'})
+    if not apikey_hash:
+        return res.out(HTTPStatus.FORBIDDEN, {'error': 'No API key configured for this application'})
+    if not verify_apikey(key, apikey_hash):
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Invalid API key'})
+
+    secret_update: SecretUpdate = ctx.secretupdate
+    sqls = f'UPDATE {executor.schema}applications SET secret = {steps.reset.next()} WHERE application = {steps.next()}'
+    await executor.execute(sqls, secret_update.secret, application_name)
+
+    res.status = HTTPStatus.ACCEPTED
+    res.body = {'message': 'Secret updated successfully'}
+
+
+@jsonify
+@contextualize
+async def regenerate_apikey(req: Request, res: Response, ctx: Context):
+    sk = req.app.peek(AMEBO_SECRET)
+    authentication = req.cookies.get('Authentication')
+    if not authentication:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Admin authentication required'})
+    try: untokenize(authentication, sk)
+    except Exception:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Invalid admin credentials'})
+
+    application_name = req.params.get('id')
+    executor = ctx.executor
+    steps = Steps(req.app._.engine)
+
+    # verify application exists
+    sqls = f'SELECT application FROM {executor.schema}applications WHERE application = {steps.next()}'
+    row = await executor.fetch(1).execute(sqls, application_name)
+    if not row:
+        return res.out(HTTPStatus.NOT_FOUND, {'error': 'Application not found'})
+
+    plaintext_key, hashed_key = generate_apikey()
+    sqls = f'UPDATE {executor.schema}applications SET apikey = {steps.reset.next()} WHERE application = {steps.next()}'
+    await executor.execute(sqls, hashed_key, application_name)
+
+    res.status = HTTPStatus.OK
+    res.body = {'apikey': plaintext_key, 'application': application_name}
+
+
+@jsonify
+@contextualize
+async def toggle_active(req: Request, res: Response, ctx: Context):
+    sk = req.app.peek(AMEBO_SECRET)
+    authentication = req.cookies.get('Authentication')
+    if not authentication:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Admin authentication required'})
+    try: untokenize(authentication, sk)
+    except Exception:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Invalid admin credentials'})
+
+    application_name = req.params.get('id')
+    executor = ctx.executor
+    steps = Steps(req.app._.engine)
+
+    # fetch current active state and toggle
+    sqls = f'SELECT active FROM {executor.schema}applications WHERE application = {steps.next()}'
+    row = await executor.fetch(1).execute(sqls, application_name)
+    if not row:
+        return res.out(HTTPStatus.NOT_FOUND, {'error': 'Application not found'})
+
+    new_active = 0 if row[0] else 1
+    sqls = f'UPDATE {executor.schema}applications SET active = {steps.reset.next()} WHERE application = {steps.next()}'
+    await executor.execute(sqls, new_active, application_name)
+
+    res.status = HTTPStatus.OK
+    res.body = {'application': application_name, 'active': bool(new_active)}
