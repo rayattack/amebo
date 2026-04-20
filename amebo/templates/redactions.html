@@ -1,0 +1,238 @@
+{% extends 'clean_base.axml' %}
+{% from 'actions.axml' import pagination %}
+
+{% set modal_name = 'Add Redaction' %}
+
+{% macro commander() %}
+{
+    isFilterable: false,
+    actionSearch: '',
+    fieldPathSearch: '',
+    whenFilter: '',
+
+    filterResults(){
+        let base = `/v1/redactions?pagination=${this.pagination}&page=1`
+        if(this.actionSearch) base += `&action=${this.actionSearch}`
+        if(this.fieldPathSearch) base += `&field_path=${this.fieldPathSearch}`
+        if(this.whenFilter) base += `&timeline=${this.whenFilter}`
+        fetch(base)
+            .then(r => r.json())
+            .then(data => {
+                isFiltering = true;
+                redactions = data;
+            }).catch(err => ShowFeedback('error', 'Filter operation failed'))
+    },
+
+    clearFilter(){
+        this.actionSearch = '';
+        this.fieldPathSearch = '';
+        this.whenFilter = '';
+        isFiltering = false;
+        fetchAll();
+    },
+
+    checkDirty(){
+        this.isFilterable = (
+            this.actionSearch !== '' ||
+            this.fieldPathSearch !== '' ||
+            this.whenFilter !== ''
+        );
+        return this.isFilterable;
+    },
+
+    removeRedaction(id){
+        if(!confirm('Remove this redaction?')) return;
+        fetch(`/v1/redactions/${id}`, { method: 'DELETE' })
+            .then(r => r.json())
+            .then(() => {
+                ShowFeedback('success', 'Redaction removed');
+                fetchAll();
+            })
+            .catch(() => ShowFeedback('error', 'Failed to remove redaction'))
+    }
+}
+{% endmacro %}
+
+
+{% block easel %}
+<section x-data="{{ controller('redactions') }}">
+    <div x-data="{{ commander() }}" x-effect="checkDirty">
+
+        <div class="page-content-scroll">
+            <div class="page-header d-flex align-items-start justify-content-between">
+                <div>
+                    <h1 class="page-title">Redactions</h1>
+                    <p class="page-subtitle">Field paths redacted from event payloads in views and responses</p>
+                </div>
+                <div class="loading-spinner" x-show="loading" x-transition>
+                    <div class="spinner-border spinner-border-sm"></div>
+                    <span>Loading...</span>
+                </div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="input-icon">
+                    <span class="material-icons">bolt</span>
+                    <input class="form-control" type="text" placeholder="Action name..."
+                        x-model="actionSearch" style="width: 200px;">
+                </div>
+                <div class="input-icon">
+                    <span class="material-icons">route</span>
+                    <input class="form-control" type="text" placeholder="Field path..."
+                        x-model="fieldPathSearch" style="width: 220px;">
+                </div>
+                <select class="form-select" x-model="whenFilter" style="width: 140px;">
+                    <option value="">Any Time</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                </select>
+                <button class="btn btn-dark btn-sm d-inline-flex align-items-center gap-1"
+                    @click="filterResults" :disabled="!isFilterable">
+                    <span class="material-icons" style="font-size: 16px;">search</span>
+                    Search
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" @click="clearFilter"
+                    :disabled="!isFiltering" x-show="isFiltering" x-transition>
+                    Clear
+                </button>
+            </div>
+        </div>
+
+        <div class="page-table-area">
+            <div class="data-table-wrapper" x-init="fetchAll()">
+                <div class="data-table-scroll">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 8%">ID</th>
+                                <th style="width: 25%">Action</th>
+                                <th>Field Path</th>
+                                <th style="width: 20%">Timestamp</th>
+                                <th style="width: 8%"></th>
+                            </tr>
+                        </thead>
+                        <tbody @refresher.window="refreshPage">
+                            <template x-for="r in redactions" :key="r.id">
+                                <tr>
+                                    <td>
+                                        <span class="tag-id" x-text="r.id"></span>
+                                    </td>
+                                    <td>
+                                        <span class="fw-medium" x-text="r.action"></span>
+                                    </td>
+                                    <td>
+                                        <code class="font-mono text-sm" x-text="r.field_path"></code>
+                                    </td>
+                                    <td>
+                                        <span class="text-muted-custom text-sm" x-text="r.timestamped"></span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
+                                            @click="removeRedaction(r.id)">
+                                            <span class="material-icons" style="font-size: 16px;">delete</span>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                            <template x-if="redactions.length === 0 && !loading">
+                                <tr>
+                                    <td colspan="5">
+                                        <div class="empty-state">
+                                            <span class="material-icons">visibility_off</span>
+                                            <p>No redactions defined</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+                {{ pagination() }}
+            </div>
+        </div>
+
+    </div>
+</section>
+{% endblock %}
+
+
+{% block wizard %}
+<span x-data="{
+    actions: [],
+    action: '',
+    field_path: '',
+    secret: '',
+
+    fetchActions(){
+        fetch('/v1/actions')
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(data => this.actions = data)
+            .catch(() => {})
+    },
+
+    resetForm(){
+        this.action = '';
+        this.field_path = '';
+        this.secret = '';
+    },
+
+    saveRedaction(){
+        superpost('/v1/redactions').send({
+            action: this.action,
+            field_path: this.field_path,
+            secret: this.secret
+        }).then(res => {
+            ShowFeedback('success', 'Redaction added');
+            this.resetForm();
+            $dispatch('refresher');
+            showModal = false;
+        }).catch(err => {
+            supertoast('error', err.response?.body?.error || 'Failed to add redaction');
+        })
+    }
+}">
+    <div class="modal-body">
+        <div class="row g-3 mb-3">
+            <div class="col-7">
+                <label class="form-label-sm">Action</label>
+                <select class="form-select" x-model="action" x-init="fetchActions">
+                    <option value="">Select Action...</option>
+                    <template x-for="a in actions">
+                        <option :value="a.action" x-text="a.action"></option>
+                    </template>
+                </select>
+            </div>
+            <div class="col-5">
+                <label class="form-label-sm">Secret Key</label>
+                <div x-data="{visible: false}" class="position-relative">
+                    <input :type="visible ? 'text' : 'password'" class="form-control pe-5"
+                        placeholder="App secret" x-model="secret">
+                    <button class="btn btn-link position-absolute end-0 top-50 translate-middle-y text-muted p-1 me-1"
+                        @click="visible = !visible" type="button" style="z-index: 3;">
+                        <span class="material-icons" style="font-size: 18px;"
+                            x-text="visible ? 'visibility' : 'visibility_off'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label-sm">Field Path</label>
+            <input type="text" class="form-control" placeholder="e.g. ssn, address.zip, items[].serial"
+                x-model="field_path">
+            <div class="form-text text-muted" style="font-size: 0.75rem;">
+                Use dot notation for nested fields. Use [] for array items. e.g. <code>address.zip</code>, <code>items[].card_number</code>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-footer">
+        <button class="btn btn-sm btn-outline-secondary" @click="showModal = false">Cancel</button>
+        <button class="btn btn-sm btn-dark d-inline-flex align-items-center gap-1" @click="saveRedaction">
+            <span class="material-icons" style="font-size: 16px;">visibility_off</span>
+            Add Redaction
+        </button>
+    </div>
+</span>
+{% endblock %}
