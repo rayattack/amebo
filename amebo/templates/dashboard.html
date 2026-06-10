@@ -2,9 +2,32 @@
 
 {% set modal_name = 'Dashboard' %}
 
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/chartist.js/latest/chartist.min.css">
+<style>
+  .dash-chart { height: 230px; }
+  .dash-chart.chart-empty { display: flex; align-items: center; justify-content: center; color: var(--amebo-text-muted); font-size: 13px; }
+  .dash-chart .ct-label { fill: var(--amebo-text-muted); color: var(--amebo-text-muted); font-size: 11px; }
+  .dash-chart .ct-grid { stroke: var(--amebo-border-subtle); stroke-dasharray: 2px; }
+  /* status donut colours */
+  .ct-delivered .ct-slice-donut { stroke: var(--amebo-success); }
+  .ct-retrying  .ct-slice-donut { stroke: var(--amebo-warning); }
+  .ct-pending   .ct-slice-donut { stroke: #adb5bd; }
+  .ct-failed    .ct-slice-donut { stroke: var(--amebo-danger); }
+  /* failure bars */
+  .dash-bars .ct-bar { stroke: var(--amebo-danger); stroke-width: 16px; }
+  .dash-bars-warn .ct-bar { stroke: var(--amebo-warning); stroke-width: 16px; }
+  .chart-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; }
+  .chart-legend span.dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-right: 5px; }
+  .dash-seg .btn.active { background: var(--amebo-text); color: var(--amebo-card-bg); }
+</style>
+{% endblock %}
+
 {% macro dashctrl() %}
 {
     window: 'all',
+    view: 'charts',        // 'charts' | 'tables'
+    tablesTab: 'failures', // 'failures' | 'subs' (only matters in tables view)
     metrics: { published: 0, delivered: 0, retrying: 0, pending: 0, failed: 0, total: 0, success_rate: null },
     failures: [],
     subs: [],
@@ -31,26 +54,74 @@
     loadMetrics(){
         fetch(`/v1/metrics/deliveries?window=${this.window}`, { credentials: 'include' })
             .then(r => r.json())
-            .then(data => { this.metrics = data; })
+            .then(data => { this.metrics = data; this.renderCharts(); })
             .catch(() => ShowFeedback('error', 'Failed to load metrics'));
     },
 
     loadFailures(){
         this.loading = true;
-        fetch('/v1/gists?status=failed&pagination=50', { credentials: 'include' })
+        fetch('/v1/gists?status=failed&pagination=200', { credentials: 'include' })
             .then(r => r.json())
-            .then(data => { this.failures = data.data || []; this.loading = false; })
+            .then(data => { this.failures = data.data || []; this.loading = false; this.renderCharts(); })
             .catch(() => { this.loading = false; });
     },
 
     loadSubs(){
         fetch('/v1/metrics/subscriptions', { credentials: 'include' })
             .then(r => r.json())
-            .then(data => { this.subs = data.data || []; })
+            .then(data => { this.subs = data.data || []; this.renderCharts(); })
             .catch(() => {});
     },
 
     setWindow(w){ this.window = w; this.loadMetrics(); },
+
+    setView(v){ this.view = v; if(v === 'charts') this.renderCharts(); },
+
+    _groupCount(items, keyfn){
+        const counts = {};
+        items.forEach(it => { const k = keyfn(it) || 'unknown'; counts[k] = (counts[k] || 0) + 1; });
+        return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    },
+
+    _bar(sel, pairs, klass){
+        const el = document.querySelector(sel);
+        if(!el) return;
+        el.innerHTML = '';
+        if(!pairs.length){ el.textContent = 'No data'; el.classList.add('chart-empty'); return; }
+        el.classList.remove('chart-empty');
+        new Chartist.Bar(sel, {
+            labels: pairs.map(p => p[0].length > 22 ? p[0].slice(0, 21) + '…' : p[0]),
+            series: [pairs.map(p => p[1])],
+        }, { horizontalBars: true, reverseData: true, axisX: { onlyInteger: true }, axisY: { offset: 150 }, chartPadding: { right: 24 } });
+        el.classList.add(klass);
+    },
+
+    renderCharts(){
+        if(this.view !== 'charts') return;
+        this.$nextTick(() => {
+            // Delivery status donut
+            const m = this.metrics;
+            const donut = document.querySelector('#chart-status');
+            if(donut){
+                donut.innerHTML = '';
+                const total = (m.delivered||0)+(m.retrying||0)+(m.pending||0)+(m.failed||0);
+                if(total === 0){ donut.textContent = 'No deliveries'; donut.classList.add('chart-empty'); }
+                else { donut.classList.remove('chart-empty'); new Chartist.Pie('#chart-status', { series: [
+                    { value: m.delivered||0, className: 'ct-delivered' },
+                    { value: m.retrying||0, className: 'ct-retrying' },
+                    { value: m.pending||0, className: 'ct-pending' },
+                    { value: m.failed||0, className: 'ct-failed' },
+                ]}, { donut: true, donutWidth: 46, showLabel: false, chartPadding: 6 }); }
+            }
+            // Top failing subscriptions
+            const topSubs = [...this.subs].filter(s => s.failed > 0).sort((a, b) => b.failed - a.failed).slice(0, 8)
+                .map(s => [`${s.subscriber} · ${s.action}`, s.failed]);
+            this._bar('#chart-subs', topSubs, 'dash-bars');
+            // Failed deliveries by action / by workspace (from the failed sample)
+            this._bar('#chart-actions', this._groupCount(this.failures, g => g.action).slice(0, 8), 'dash-bars');
+            this._bar('#chart-workspaces', this._groupCount(this.failures, g => g.workspace).slice(0, 8), 'dash-bars-warn');
+        });
+    },
 
     fmtRate(){ return this.metrics.success_rate === null ? '—' : `${this.metrics.success_rate}%`; },
 
@@ -157,6 +228,17 @@
                             @click="setWindow(w[0])" x-text="w[1]"></button>
                     </template>
                 </div>
+                <!-- Charts <-> Tables toggle -->
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn d-inline-flex align-items-center gap-1"
+                        :class="view === 'charts' ? 'btn-dark' : 'btn-outline-secondary'" @click="setView('charts')">
+                        <span class="material-icons" style="font-size: 16px;">insights</span> Charts
+                    </button>
+                    <button type="button" class="btn d-inline-flex align-items-center gap-1"
+                        :class="view === 'tables' ? 'btn-dark' : 'btn-outline-secondary'" @click="setView('tables')">
+                        <span class="material-icons" style="font-size: 16px;">table_rows</span> Tables
+                    </button>
+                </div>
                 <button class="btn btn-sm btn-outline-secondary btn-icon" @click="refresh" title="Refresh">
                     <span class="material-icons" style="font-size: 18px;">refresh</span>
                 </button>
@@ -197,11 +279,62 @@
             </div>
         </div>
 
-        <!-- Needs attention -->
-        <div class="d-flex align-items-center justify-content-between mb-2">
-            <h6 class="fw-bold mb-0">Needs attention <span class="text-muted-custom" x-text="`(${failures.length})`"></span></h6>
+        <!-- ============================ CHARTS VIEW ============================ -->
+        <div x-show="view === 'charts'" x-transition.opacity>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                    <div class="detail-panel p-3 h-100">
+                        <h6 class="fw-bold mb-2">Delivery status</h6>
+                        <div id="chart-status" class="dash-chart"></div>
+                        <div class="chart-legend mt-2">
+                            <span><span class="dot" style="background: var(--amebo-success);"></span>Delivered <strong x-text="metrics.delivered"></strong></span>
+                            <span><span class="dot" style="background: var(--amebo-warning);"></span>Retrying <strong x-text="metrics.retrying"></strong></span>
+                            <span><span class="dot" style="background: #adb5bd;"></span>Pending <strong x-text="metrics.pending"></strong></span>
+                            <span><span class="dot" style="background: var(--amebo-danger);"></span>Failed <strong x-text="metrics.failed"></strong></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <div class="detail-panel p-3 h-100">
+                        <h6 class="fw-bold mb-2">Top failing subscriptions</h6>
+                        <div id="chart-subs" class="dash-chart"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="detail-panel p-3 h-100">
+                        <h6 class="fw-bold mb-2">Failures by action <span class="text-muted-custom text-sm">(current failed set)</span></h6>
+                        <div id="chart-actions" class="dash-chart"></div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="detail-panel p-3 h-100">
+                        <h6 class="fw-bold mb-2">Failures by workspace <span class="text-muted-custom text-sm">(current failed set)</span></h6>
+                        <div id="chart-workspaces" class="dash-chart"></div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="data-table-wrapper mb-4" style="max-height: 340px; overflow: auto;">
+
+        <!-- ============================ TABLES VIEW ============================ -->
+        <div x-show="view === 'tables'" x-transition.opacity>
+        <!-- Needs Attention / Subscription Health sub-tabs -->
+        <div class="btn-group btn-group-sm mb-3" role="group">
+            <button type="button" class="btn d-inline-flex align-items-center gap-1"
+                :class="tablesTab === 'failures' ? 'btn-dark' : 'btn-outline-secondary'" @click="tablesTab = 'failures'">
+                <span class="material-icons" style="font-size: 16px;">priority_high</span>
+                Needs attention <span x-text="`(${failures.length})`"></span>
+            </button>
+            <button type="button" class="btn d-inline-flex align-items-center gap-1"
+                :class="tablesTab === 'subs' ? 'btn-dark' : 'btn-outline-secondary'" @click="tablesTab = 'subs'">
+                <span class="material-icons" style="font-size: 16px;">rss_feed</span>
+                Subscription health <span x-text="`(${subs.length})`"></span>
+            </button>
+        </div>
+
+        <!-- Needs attention -->
+        <div x-show="tablesTab === 'failures'" class="data-table-wrapper mb-4" style="max-height: 460px; overflow: auto;">
             <table class="data-table">
                 <thead>
                     <tr>
@@ -247,8 +380,7 @@
         </div>
 
         <!-- Per-subscription health -->
-        <h6 class="fw-bold mb-2">Subscription health</h6>
-        <div class="data-table-wrapper" style="max-height: 360px; overflow: auto;">
+        <div x-show="tablesTab === 'subs'" class="data-table-wrapper" style="max-height: 460px; overflow: auto;">
             <table class="data-table">
                 <thead>
                     <tr>
@@ -284,6 +416,8 @@
                 </tbody>
             </table>
         </div>
+        </div>
+        <!-- ====================== end TABLES VIEW ====================== -->
     </div>
 
     <!-- Gist detail modal (opened from Needs attention or a subscription drill-down) -->
