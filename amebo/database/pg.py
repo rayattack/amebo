@@ -83,6 +83,8 @@ SET search_path TO _amebo_;
     ALTER TABLE _amebo_.gists ADD COLUMN IF NOT EXISTS last_status_code integer;
     ALTER TABLE _amebo_.gists ADD COLUMN IF NOT EXISTS last_error text;
     ALTER TABLE _amebo_.gists ADD COLUMN IF NOT EXISTS last_attempted_at timestamptz;
+    -- first-class dead-letter marker (P2): set when a gist exhausts its retries
+    ALTER TABLE _amebo_.gists ADD COLUMN IF NOT EXISTS dead_at timestamptz;
 
 SET search_path TO public;
 '''

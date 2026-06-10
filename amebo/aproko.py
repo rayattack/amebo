@@ -31,7 +31,7 @@ async def aproko(router: Router):
         logger.warning('Database connection not available, aproko daemon will not run')
         return False
 
-    async def notify(endpoint: str, data: dict, metadata: dict, secret: str, rowid, header_id: str, attempt_number: int, action: str):
+    async def notify(endpoint: str, data: dict, metadata: dict, secret: str, rowid, header_id: str, attempt_number: int, action: str, max_retries: int):
         payload= {'action': action, 'metadata': metadata, 'payload': data}
         headers = {
             'Content-Type': 'application/json',
@@ -41,7 +41,8 @@ async def aproko(router: Router):
         }
 
         attempted_at = datetime.now().isoformat()
-        outcome = {'rowid': rowid, 'ok': False, 'code': None, 'error': None, 'at': attempted_at}
+        outcome = {'rowid': rowid, 'ok': False, 'code': None, 'error': None, 'at': attempted_at,
+                   'retries': attempt_number, 'max_retries': max_retries}
         client = None
         try:
             timeout = Timeout(10.0, connect=5.0)
@@ -66,7 +67,8 @@ async def aproko(router: Router):
         # one identifier present on both PostgreSQL and SQLite). Shares the exact
         # write path as UI replay so daemon and replay record results identically.
         for r in results:
-            try: await writeback_attempt(executor, r['rowid'], r['ok'], r['code'], r['error'], r['at'])
+            try: await writeback_attempt(executor, r['rowid'], r['ok'], r['code'], r['error'], r['at'],
+                                         retries=r['retries'], max_retries=r['max_retries'])
             except Exception as exc: logger.error('Could not reconcile gist %s: %s', r['rowid'], exc)
         results.clear()
 
@@ -84,6 +86,7 @@ async def aproko(router: Router):
                         JOIN {x}subscriptions s ON s.subscription = g.subscription
                         WHERE g.completed <> 1
                         AND g.retries < s.max_retries
+                        AND g.dead_at IS NULL
                         AND (g.sleep_until IS NULL OR g.sleep_until < $1::timestamp)
                         ORDER BY g.event LIMIT {router.CONFIG('envelope_size')}
                         FOR UPDATE SKIP LOCKED
@@ -97,7 +100,7 @@ async def aproko(router: Router):
                     )
                     SELECT
                         s.handler AS endpoint, e.payload, e.metadata, a.secret, g.rowid as gid,
-                        g.gist as header_id, g.retries, e.action
+                        g.gist as header_id, g.retries, e.action, s.max_retries
                     FROM {x}gists AS g
                     JOIN leased l ON g.gist = l.gist
                     JOIN {x}events e ON g.event = e.event
@@ -114,7 +117,7 @@ async def aproko(router: Router):
                 sqls = f'''
                     SELECT
                         s.handler AS endpoint, e.payload, e.metadata, a.secret, g.rowid as gid,
-                        g.event as header_id, g.retries, e.action
+                        g.event as header_id, g.retries, e.action, s.max_retries
                     FROM {x}gists AS g JOIN {x}events e ON
                         g.event = e.event
                     JOIN {x}subscriptions s ON
@@ -125,6 +128,7 @@ async def aproko(router: Router):
                         s.application = a.application
                     WHERE g.completed <> 1
                     AND g.retries < s.max_retries
+                    AND g.dead_at IS NULL
                     AND (g.sleep_until IS NULL OR g.sleep_until < '{now_iso}')
                     ORDER BY g.timestamped LIMIT {router.CONFIG('envelope_size')};
                 '''
@@ -136,7 +140,7 @@ async def aproko(router: Router):
                     except Exception as exc: logger.error('Could not lease sqlite gist: %s', exc)
 
             if gists is None: gists = []
-            await gather(*[notify(endpoint, loads(payload), loads(metadata), secret, gid, header_id, retries, action) for endpoint, payload, metadata, secret, gid, header_id, retries, action in gists])
+            await gather(*[notify(endpoint, loads(payload), loads(metadata), secret, gid, header_id, retries, action, max_retries) for endpoint, payload, metadata, secret, gid, header_id, retries, action, max_retries in gists])
             await reconcile()
             return len(gists)
         except Exception as exc:

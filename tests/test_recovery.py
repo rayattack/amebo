@@ -27,6 +27,7 @@ NEW_COLUMNS = [
     'ALTER TABLE gists ADD COLUMN last_status_code integer',
     'ALTER TABLE gists ADD COLUMN last_error text',
     'ALTER TABLE gists ADD COLUMN last_attempted_at text',
+    'ALTER TABLE gists ADD COLUMN dead_at text',
 ]
 
 
@@ -330,6 +331,53 @@ class SqliteRecoveryTest(RecoveryTestBase, unittest.TestCase):
         row = self.one("SELECT completed, last_status_code, last_error FROM gists WHERE rowid = ?", self.retry_id)
         self.assertEqual(row[0], 0); self.assertEqual(row[1], 503); self.assertEqual(row[2], 'down')
 
+    # ---- P2: exponential backoff + dead-letter ----
+
+    def test_backoff_seconds_grows_and_caps(self):
+        from amebo.utils.helpers import backoff_seconds, BACKOFF_CAP_SECONDS
+        self.assertEqual(backoff_seconds(1), 10)
+        self.assertEqual(backoff_seconds(2), 20)
+        self.assertEqual(backoff_seconds(3), 40)
+        self.assertEqual(backoff_seconds(100), BACKOFF_CAP_SECONDS)   # capped
+
+    def test_failed_attempt_schedules_backoff(self):
+        # a retrying gist (retries=1, max=3): a failed replay backs off, does NOT die
+        FakeClient.reset(code=500, text='nope')
+        before = datetime.now()
+        self.call(gists.replay, params={'id': self.retry_id})
+        row = self.one("SELECT retries, dead_at, sleep_until FROM gists WHERE rowid = ?", self.retry_id)
+        self.assertEqual(row[0], 2)                 # incremented
+        self.assertIsNone(row[1])                   # not dead yet
+        self.assertIsNotNone(row[2])                # next attempt scheduled
+        nxt = datetime.fromisoformat(row[2])
+        self.assertGreater(nxt, before)             # scheduled in the future (backoff)
+
+    def test_exhaustion_dead_letters(self):
+        # gist at retries=2, max=3: one more failure exhausts -> dead_at set
+        self.add_subscription('s-dl')
+        gid = self.add_gist('evt-1', 's-dl', 0, 2, datetime.now().isoformat())
+        FakeClient.reset(code=500, text='still down')
+        self.call(gists.replay, params={'id': gid})
+        row = self.one("SELECT retries, dead_at FROM gists WHERE rowid = ?", gid)
+        self.assertEqual(row[0], 3)
+        self.assertIsNotNone(row[1])                # dead-lettered
+        # and it now reports as failed via the status filter
+        _, failed = self.call(gists.tabulate, queries={'status': 'failed'})
+        self.assertIn(str(gid), [r['id'] for r in failed['data']])
+
+    def test_status_failed_via_dead_at_even_with_retries_left(self):
+        # terminal: a dead_at row is 'failed' even if retries < max_retries
+        self.exec0("UPDATE gists SET dead_at = ? WHERE rowid = ?", datetime.now().isoformat(), self.pending_id)
+        _, body = self.call(gists.tabulate, queries={'gist': str(self.pending_id)})
+        self.assertEqual(body['data'][0]['status'], 'failed')
+        self.assertIsNotNone(body['data'][0]['dead_at'])
+
+    def test_requeue_clears_dead_at(self):
+        self.exec0("UPDATE gists SET dead_at = ? WHERE rowid = ?", datetime.now().isoformat(), self.failed_id)
+        self.call(gists.requeue, queries={'gist': self.failed_id})
+        row = self.one("SELECT dead_at, retries, completed FROM gists WHERE rowid = ?", self.failed_id)
+        self.assertIsNone(row[0]); self.assertEqual(row[1], 0); self.assertEqual(row[2], 0)
+
 
 PG_DSN = os.environ.get('AMEBO_TEST_DSN')
 
@@ -441,6 +489,17 @@ class PostgresRecoveryTest(unittest.TestCase):
         self.assertEqual(body['success_rate'], 50.0)
         _, subs = self.call(metrics.subscriptions)
         self.assertTrue(any(r['failed'] == 1 for r in subs['data']))
+
+    def test_dead_letter_and_backoff(self):
+        # retrying gist (retries=1) failing -> backs off (timestamptz), not dead
+        FakeClient.reset(code=500, text='x')
+        self.call(gists.replay, params={'id': str(self.ids['retrying'])})
+        row = self.loop.run_until_complete(self._row("SELECT retries, dead_at, sleep_until FROM _amebo_.gists WHERE rowid=$1", self.ids['retrying']))
+        self.assertEqual(row[0], 2); self.assertIsNone(row[1]); self.assertIsNotNone(row[2])
+        # exhausted gist (retries=3, max=3) failing -> dead-lettered
+        self.call(gists.replay, params={'id': str(self.ids['failed'])})
+        dead = self.loop.run_until_complete(self._row("SELECT dead_at FROM _amebo_.gists WHERE rowid=$1", self.ids['failed']))
+        self.assertIsNotNone(dead[0])
 
 
 if __name__ == '__main__':

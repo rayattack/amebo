@@ -9,6 +9,7 @@
     failures: [],
     subs: [],
     loading: false,
+    busy: null,
 
     showBackfill: false,
     backfillSub: null,
@@ -48,21 +49,25 @@
     fmtRate(){ return this.metrics.success_rate === null ? '—' : `${this.metrics.success_rate}%`; },
 
     replayOne(id){
+        this.busy = id;
         fetch(`/v1/regists/${id}`, { method: 'POST', credentials: 'include' })
-            .then(r => r.json())
+            .then(async r => { if(!r.ok) throw await r.json().catch(() => ({})); return r.json(); })
             .then(data => {
-                if(data.delivered) ShowFeedback('success', `Gist ${id} delivered`);
-                else ShowFeedback('warning', `Gist ${id} still failing`);
+                if(data.delivered) ShowFeedback('success', `Gist ${id} replayed — delivered (${data.status_code})`);
+                else ShowFeedback('warning', `Gist ${id} replayed but still failing${data.status_code ? ' ('+data.status_code+')' : ''}`);
                 this.refresh();
             })
-            .catch(() => ShowFeedback('error', 'Replay failed'));
+            .catch(err => ShowFeedback('error', err?.error || 'Replay failed'))
+            .finally(() => { this.busy = null; });
     },
 
     requeueOne(id){
+        this.busy = id;
         fetch(`/v1/requeues?gist=${id}`, { method: 'POST', credentials: 'include' })
-            .then(r => r.json())
-            .then(() => { ShowFeedback('info', `Gist ${id} requeued`); this.refresh(); })
-            .catch(() => ShowFeedback('error', 'Requeue failed'));
+            .then(async r => { if(!r.ok) throw await r.json().catch(() => ({})); return r.json(); })
+            .then(data => { ShowFeedback('success', `Gist ${id} requeued — daemon will retry it`); this.refresh(); })
+            .catch(err => ShowFeedback('error', err?.error || 'Requeue failed'))
+            .finally(() => { this.busy = null; });
     },
 
     openBackfill(sub){
@@ -178,14 +183,20 @@
                         <tr>
                             <td><span class="fw-medium" x-text="g.action"></span></td>
                             <td class="text-sm"><span x-text="g.publisher"></span> &rarr; <span x-text="g.subscriber"></span></td>
-                            <td><code class="font-mono text-sm" x-text="g.endpoint"></code></td>
+                            <td><code class="font-mono text-sm" x-text="g.endpoint" :title="g.endpoint"></code></td>
                             <td class="text-sm" x-text="`${g.retries} / ${g.max_retries}`"></td>
                             <td class="text-sm" x-text="g.last_status_code || '—'"></td>
                             <td><span class="text-muted-custom text-sm" :title="g.last_error || ''" x-text="(g.last_error || '—').slice(0, 60)"></span></td>
                             <td><span class="text-muted-custom text-sm" x-text="g.last_attempted_at ? new Date(String(g.last_attempted_at).replace(' ', 'T')).toLocaleString() : '—'"></span></td>
                             <td>
-                                <button class="btn-action" @click="replayOne(g.id)" title="Replay now"><span class="material-icons">replay</span></button>
-                                <button class="btn-action" @click="requeueOne(g.id)" title="Requeue"><span class="material-icons">schedule_send</span></button>
+                                <button class="btn-action" @click="replayOne(g.id)" :disabled="busy === g.id" title="Replay now">
+                                    <span class="material-icons" x-show="busy !== g.id">replay</span>
+                                    <span class="spinner-border spinner-border-sm" x-show="busy === g.id" x-cloak></span>
+                                </button>
+                                <button class="btn-action" @click="requeueOne(g.id)" :disabled="busy === g.id" title="Requeue">
+                                    <span class="material-icons" x-show="busy !== g.id">schedule_send</span>
+                                    <span class="spinner-border spinner-border-sm" x-show="busy === g.id" x-cloak></span>
+                                </button>
                             </td>
                         </tr>
                     </template>
@@ -216,7 +227,8 @@
                         <tr>
                             <td><span class="tag-id" x-text="s.subscriber"></span></td>
                             <td><span class="fw-medium" x-text="s.action"></span></td>
-                            <td><code class="font-mono text-sm" x-text="s.handler"></code></td>
+                            <td><code class="font-mono text-sm text-truncate d-inline-block" style="max-width: 280px; vertical-align: bottom;"
+                                x-text="s.handler" :title="s.handler"></code></td>
                             <td><span class="badge-status success" x-text="s.delivered"></span></td>
                             <td><span class="badge-status" :class="s.failed > 0 ? 'danger' : ''" x-text="s.failed"></span></td>
                             <td><span class="text-muted-custom text-sm" :title="s.last_error || ''" x-text="s.last_error ? s.last_error.slice(0, 70) : '—'"></span></td>

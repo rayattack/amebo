@@ -63,6 +63,8 @@ async def initialize(app: Application):
             'ALTER TABLE gists ADD COLUMN last_status_code integer',
             'ALTER TABLE gists ADD COLUMN last_error text',
             'ALTER TABLE gists ADD COLUMN last_attempted_at text',
+            # first-class dead-letter marker (P2): set when a gist exhausts its retries
+            'ALTER TABLE gists ADD COLUMN dead_at text',
         ]:
             try: db.execute(alter)
             except Exception: pass  # column already exists

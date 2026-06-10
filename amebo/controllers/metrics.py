@@ -10,9 +10,9 @@ from amebo.controllers.gists import _timeline_cutoff, GISTS_FROM
 # SUM(CASE ...) fragments that mirror helpers.status_expr / STATUS_PREDICATES exactly.
 _COUNTS = '''
     SUM(CASE WHEN g.completed <> 0 THEN 1 ELSE 0 END) AS delivered,
-    SUM(CASE WHEN g.completed = 0 AND g.retries >= s.max_retries THEN 1 ELSE 0 END) AS failed,
-    SUM(CASE WHEN g.completed = 0 AND g.retries > 0 AND g.retries < s.max_retries THEN 1 ELSE 0 END) AS retrying,
-    SUM(CASE WHEN g.completed = 0 AND g.retries = 0 THEN 1 ELSE 0 END) AS pending,
+    SUM(CASE WHEN g.completed = 0 AND (g.dead_at IS NOT NULL OR g.retries >= s.max_retries) THEN 1 ELSE 0 END) AS failed,
+    SUM(CASE WHEN g.completed = 0 AND g.dead_at IS NULL AND g.retries > 0 AND g.retries < s.max_retries THEN 1 ELSE 0 END) AS retrying,
+    SUM(CASE WHEN g.completed = 0 AND g.dead_at IS NULL AND g.retries = 0 THEN 1 ELSE 0 END) AS pending,
     COUNT(*) AS total
 '''
 

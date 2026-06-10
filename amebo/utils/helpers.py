@@ -47,8 +47,21 @@ def get_timeline(timeline, step_or_filter, column: str = None):
 
 MAX_ERROR_LENGTH = 500
 
-# Canonical delivery-status vocabulary. "failed" == exhausted (out of retries).
+# Canonical delivery-status vocabulary. "failed" == exhausted / dead-lettered.
 DELIVERY_STATUSES = ('pending', 'retrying', 'delivered', 'failed')
+
+# Exponential backoff between delivery retries (P2): base * factor^(attempt-1), capped.
+BACKOFF_BASE_SECONDS = 10
+BACKOFF_FACTOR = 2
+BACKOFF_CAP_SECONDS = 3600
+
+
+def backoff_seconds(attempt: int, base: int = BACKOFF_BASE_SECONDS,
+                    factor: int = BACKOFF_FACTOR, cap: int = BACKOFF_CAP_SECONDS):
+    """Seconds to wait before the next attempt. `attempt` is the number of attempts
+    made so far (>=1): attempt 1 -> base, 2 -> base*factor, ... capped at `cap`."""
+    if attempt < 1: attempt = 1
+    return min(cap, base * (factor ** (attempt - 1)))
 
 
 def status_expr(g: str = 'g', s: str = 's'):
@@ -59,13 +72,13 @@ def status_expr(g: str = 'g', s: str = 's'):
     Requires the query to join gists (alias `g`) to subscriptions (alias `s`) so
     `max_retries` is in scope.
         delivered -> handler accepted (completed)
-        failed    -> exhausted: out of retries and never accepted
+        failed    -> dead-lettered (dead_at set) or out of retries, never accepted
         retrying  -> attempted at least once, retries remain
         pending   -> not yet attempted
     """
     return f'''CASE
         WHEN {g}.completed <> 0 THEN 'delivered'
-        WHEN {g}.retries >= {s}.max_retries THEN 'failed'
+        WHEN {g}.dead_at IS NOT NULL OR {g}.retries >= {s}.max_retries THEN 'failed'
         WHEN {g}.retries > 0 THEN 'retrying'
         ELSE 'pending'
     END'''

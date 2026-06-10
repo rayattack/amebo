@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "amebo"
-version = "0.6.2"
+version = "0.7.0"
 description = "HTTP Event Notifications Server - A lightweight, schema-driven event broadcasting system for microservices and distributed applications"
 authors = ["Raymond Ortserga <codesage@live.com>"]
 license = "MIT"
@@ -37,6 +37,7 @@ include = [
     "amebo/public/*.css",
     "amebo/public/*.js",
     "amebo/public/*.webp",
+    "amebo/public/*.svg",
     "amebo/public/icons/*",
     "amebo/database/*.py",
     "amebo/models/*.py",

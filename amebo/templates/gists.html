@@ -26,6 +26,7 @@
     selected: {},
     bulkCount: null,
     bulkRunning: false,
+    busy: null,
     showConfirm: false,
 
     buildQuery(page){
@@ -93,21 +94,25 @@
     clearSelection(){ this.selected = {}; },
 
     replayOne(id){
+        this.busy = id;
         fetch(`/v1/regists/${id}`, { method: 'POST', credentials: 'include' })
-            .then(r => r.json())
+            .then(async r => { if(!r.ok) throw await r.json().catch(() => ({})); return r.json(); })
             .then(data => {
-                if(data.delivered) ShowFeedback('success', `Gist ${id} delivered (${data.status_code})`);
-                else ShowFeedback('warning', `Gist ${id} still failing${data.status_code ? ' ('+data.status_code+')' : ''}`);
+                if(data.delivered) ShowFeedback('success', `Gist ${id} replayed — delivered (${data.status_code})`);
+                else ShowFeedback('warning', `Gist ${id} replayed but still failing${data.status_code ? ' ('+data.status_code+')' : ''}`);
                 this.refreshPage();
             })
-            .catch(() => ShowFeedback('error', 'Replay failed'));
+            .catch(err => ShowFeedback('error', err?.error || 'Replay failed'))
+            .finally(() => { this.busy = null; });
     },
 
     requeueOne(id){
+        this.busy = id;
         fetch(`/v1/requeues?gist=${id}`, { method: 'POST', credentials: 'include' })
-            .then(r => r.json())
-            .then(() => { ShowFeedback('info', `Gist ${id} requeued for the daemon`); this.refreshPage(); })
-            .catch(() => ShowFeedback('error', 'Requeue failed'));
+            .then(async r => { if(!r.ok) throw await r.json().catch(() => ({})); return r.json(); })
+            .then(data => { ShowFeedback('success', `Gist ${id} requeued — daemon will retry it`); this.refreshPage(); })
+            .catch(err => ShowFeedback('error', err?.error || 'Requeue failed'))
+            .finally(() => { this.busy = null; });
     },
 
     askBulk(){
@@ -162,6 +167,7 @@
 
 {% block easel %}
 <section x-data="{{ gistctrl() }}">
+  <div>
 
     <div class="page-content-scroll">
         <div class="page-header d-flex align-items-start justify-content-between">
@@ -254,7 +260,7 @@
                                     <span class="text-muted-custom"> &rarr; </span>
                                     <span class="text-sm" x-text="gist.subscriber"></span>
                                 </td>
-                                <td @click="openPreview(gist)"><code class="font-mono text-sm" x-text="gist.endpoint"></code></td>
+                                <td @click="openPreview(gist)"><code class="font-mono text-sm" x-text="gist.endpoint" :title="gist.endpoint"></code></td>
                                 <td @click="openPreview(gist)">
                                     <span class="text-sm" x-text="`${gist.retries} / ${gist.max_retries}`"></span>
                                 </td>
@@ -270,11 +276,13 @@
                                         x-text="gist.last_attempted_at ? new Date(String(gist.last_attempted_at).replace(' ', 'T')).toLocaleString() : '—'"></span>
                                 </td>
                                 <td>
-                                    <button class="btn-action" @click.stop="replayOne(gist.id)" title="Replay now (inline)">
-                                        <span class="material-icons">replay</span>
+                                    <button class="btn-action" @click.stop="replayOne(gist.id)" :disabled="busy === gist.id" title="Replay now (inline)">
+                                        <span class="material-icons" x-show="busy !== gist.id">replay</span>
+                                        <span class="spinner-border spinner-border-sm" x-show="busy === gist.id" x-cloak></span>
                                     </button>
-                                    <button class="btn-action" @click.stop="requeueOne(gist.id)" title="Requeue for daemon">
-                                        <span class="material-icons">schedule_send</span>
+                                    <button class="btn-action" @click.stop="requeueOne(gist.id)" :disabled="busy === gist.id" title="Requeue for daemon">
+                                        <span class="material-icons" x-show="busy !== gist.id">schedule_send</span>
+                                        <span class="spinner-border spinner-border-sm" x-show="busy === gist.id" x-cloak></span>
                                     </button>
                                 </td>
                             </tr>
@@ -314,6 +322,8 @@
             </div>
         </div>
     </div>
+
+  </div>
 
     <!-- Bulk replay confirm -->
     <div class="modal fade" :class="showConfirm ? 'show d-block' : ''" tabindex="-1"
@@ -358,6 +368,15 @@
                             <span class="field-value" x-text="previewing?.last_status_code || '—'"></span></div>
                         <div class="detail-field"><span class="field-label">Endpoint</span>
                             <span class="field-value font-mono text-sm" x-text="previewing?.endpoint"></span></div>
+                        <template x-if="previewing?.status === 'retrying' && previewing?.sleep_until">
+                            <div class="detail-field"><span class="field-label">Next retry</span>
+                                <span class="field-value text-sm" x-text="new Date(String(previewing.sleep_until).replace(' ', 'T')).toLocaleString()"></span></div>
+                        </template>
+                        <template x-if="previewing?.dead_at">
+                            <div class="detail-field"><span class="field-label">Dead-lettered</span>
+                                <span class="field-value text-sm" style="color: var(--amebo-danger);"
+                                    x-text="new Date(String(previewing.dead_at).replace(' ', 'T')).toLocaleString()"></span></div>
+                        </template>
                     </div>
                     <template x-if="previewing?.last_error">
                         <div class="alert alert-danger py-2 px-3 text-sm" style="white-space: pre-wrap;" x-text="previewing?.last_error"></div>

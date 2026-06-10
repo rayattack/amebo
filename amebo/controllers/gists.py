@@ -12,7 +12,8 @@ from amebo.decorators.security import protected
 from amebo.decorators.providers import contextualize, expects
 from amebo.constants.literals import DB, MAX_PAGINATION, X_AMEBO_SIGNATURE
 from amebo.utils.helpers import (
-    get_pagination, datasigner, status_expr, truncate_error, redact_payload, DELIVERY_STATUSES,
+    get_pagination, datasigner, status_expr, truncate_error, redact_payload,
+    backoff_seconds, DELIVERY_STATUSES,
 )
 from amebo.utils.structs import Steps
 from amebo.models.gists import Ack
@@ -23,9 +24,9 @@ from amebo.controllers.redactions import fetch_redacted_paths
 # so the API filter and the dashboard cards mean the exact same thing as the daemon.
 STATUS_PREDICATES = {
     'delivered': 'g.completed <> 0',
-    'failed': 'g.completed = 0 AND g.retries >= s.max_retries',
-    'retrying': 'g.completed = 0 AND g.retries > 0 AND g.retries < s.max_retries',
-    'pending': 'g.completed = 0 AND g.retries = 0',
+    'failed': 'g.completed = 0 AND (g.dead_at IS NOT NULL OR g.retries >= s.max_retries)',
+    'retrying': 'g.completed = 0 AND g.dead_at IS NULL AND g.retries > 0 AND g.retries < s.max_retries',
+    'pending': 'g.completed = 0 AND g.dead_at IS NULL AND g.retries = 0',
 }
 
 # windows for the dashboard / metrics, expressed as a lookback delta
@@ -148,7 +149,7 @@ async def tabulate(req: Request, res: Response, ctx: Context):
             g.completed AS completed, g.retries AS retries,
             g.last_status_code AS last_status_code, g.last_error AS last_error,
             g.last_attempted_at AS last_attempted_at, g.sleep_until AS sleep_until,
-            g.timestamped AS timestamped, e.payload AS payload,
+            g.dead_at AS dead_at, g.timestamped AS timestamped, e.payload AS payload,
             {status_expr('g', 's')} AS status
         {frm}
         {clause}
@@ -189,12 +190,13 @@ async def tabulate(req: Request, res: Response, ctx: Context):
         'last_error': last_error,
         'last_attempted_at': last_attempted_at,
         'sleep_until': sleep_until,
+        'dead_at': dead_at,
         'timestamped': timestamped,
         'status': status,
         'payload': preview(action, payload),
     } for (id, event, action, publisher, subscriber, endpoint, max_retries, completed,
            retries, last_status_code, last_error, last_attempted_at, sleep_until,
-           timestamped, payload, status) in rows]
+           dead_at, timestamped, payload, status) in rows]
 
     res.status = HTTPStatus.OK
     res.body = {
@@ -216,7 +218,7 @@ async def _fetch_gist(executor, rowid):
     x = executor.schema
     p = '?' if executor.engine == 'sqlite' else '$1'
     sqls = f'''
-        SELECT g.rowid, s.handler, e.payload, e.metadata, a.secret, g.retries, e.action, {_gist_uuid_col(executor)}, g.event
+        SELECT g.rowid, s.handler, e.payload, e.metadata, a.secret, g.retries, e.action, {_gist_uuid_col(executor)}, g.event, s.max_retries
         {GISTS_FROM.format(x=x)}
         JOIN {x}applications a ON s.application = a.application
         WHERE g.rowid = {p};
@@ -226,32 +228,43 @@ async def _fetch_gist(executor, rowid):
     return await executor.fetch(1).execute(sqls, rowid)
 
 
-async def writeback_attempt(executor, rowid, ok: bool, code, error, at: str):
+async def writeback_attempt(executor, rowid, ok: bool, code, error, at: str,
+                            retries: int = 0, max_retries: int = None):
     """Record one delivery attempt's outcome onto a gist row (keyed on rowid).
-    Shared by the aproko daemon and UI replay so both write results identically."""
+    Shared by the aproko daemon and UI replay so both write results identically.
+
+    On failure (P2): schedules the next attempt with EXPONENTIAL BACKOFF via
+    sleep_until, and DEAD-LETTERS the gist (sets dead_at) once it exhausts max_retries
+    so the terminal state is queryable without re-deriving it from max_retries."""
     x = executor.schema
-    cast = '::text::timestamptz' if executor.engine.startswith('post') else ''
-    if executor.engine == 'sqlite':
-        if ok:
-            sqls = f'UPDATE {x}gists SET completed = 1, retries = retries + 1, last_status_code = ?, last_error = NULL, last_attempted_at = ? WHERE rowid = ?;'
-            args = (code, at, rowid)
-        else:
-            sqls = f'UPDATE {x}gists SET retries = retries + 1, last_status_code = ?, last_error = ?, last_attempted_at = ? WHERE rowid = ?;'
-            args = (code, error, at, rowid)
+    sqlite = executor.engine == 'sqlite'
+    cast = '' if sqlite else '::text::timestamptz'
+    def ph(n): return '?' if sqlite else f'${n}'
+
+    if ok:
+        # delivered: clear the failure markers
+        sqls = (f'UPDATE {x}gists SET completed = 1, retries = retries + 1, '
+                f'last_status_code = {ph(1)}, last_error = NULL, last_attempted_at = {ph(2)}{cast}, '
+                f'dead_at = NULL WHERE rowid = {ph(3)};')
+        args = (code, at, rowid)
     else:
-        if ok:
-            sqls = f'UPDATE {x}gists SET completed = 1, retries = retries + 1, last_status_code = $1, last_error = NULL, last_attempted_at = $2{cast} WHERE rowid = $3;'
-            args = (code, at, rowid)
-        else:
-            sqls = f'UPDATE {x}gists SET retries = retries + 1, last_status_code = $1, last_error = $2, last_attempted_at = $3{cast} WHERE rowid = $4;'
-            args = (code, error, at, rowid)
+        next_retries = (retries or 0) + 1
+        dead = max_retries is not None and next_retries >= max_retries
+        now = datetime.now()
+        # dead gists are terminal — no point scheduling them; live ones back off
+        next_sleep = now.isoformat() if dead else (now + timedelta(seconds=backoff_seconds(next_retries))).isoformat()
+        dead_at = now.isoformat() if dead else None
+        sqls = (f'UPDATE {x}gists SET retries = retries + 1, last_status_code = {ph(1)}, '
+                f'last_error = {ph(2)}, last_attempted_at = {ph(3)}{cast}, '
+                f'sleep_until = {ph(4)}{cast}, dead_at = {ph(5)}{cast} WHERE rowid = {ph(6)};')
+        args = (code, error, at, next_sleep, dead_at, rowid)
     await executor.fetch(0).execute(sqls, *args)
 
 
 async def _proxy_deliver(executor, gist):
     """Re-POST one gist inline and write the outcome back onto the row.
     Returns (ok, status_code, error). Preserves HMAC signing + amebo headers."""
-    rowid, handler, payload, metadata, secret, retries, action, header_gist, event = gist
+    rowid, handler, payload, metadata, secret, retries, action, header_gist, event, max_retries = gist
     body = {'action': action, 'metadata': loads(metadata) if metadata else {}, 'payload': loads(payload)}
     headers = {
         'Content-Type': 'application/json',
@@ -272,7 +285,7 @@ async def _proxy_deliver(executor, gist):
         error = truncate_error(f'{type(exc).__name__}: {exc}')
     finally:
         if client: await client.aclose()
-    await writeback_attempt(executor, rowid, ok, code, error, at)
+    await writeback_attempt(executor, rowid, ok, code, error, at, retries=retries, max_retries=max_retries)
     return ok, code, error
 
 
@@ -320,7 +333,7 @@ async def bulk_replay(req: Request, res: Response, ctx: Context):
     x = executor.schema
     where = _build_filters(req, executor.engine, default_status='failed')
     sqls = f'''
-        SELECT g.rowid, s.handler, e.payload, e.metadata, a.secret, g.retries, e.action, {_gist_uuid_col(executor)}, g.event
+        SELECT g.rowid, s.handler, e.payload, e.metadata, a.secret, g.retries, e.action, {_gist_uuid_col(executor)}, g.event, s.max_retries
         {GISTS_FROM.format(x=x)}
         JOIN {x}applications a ON s.application = a.application
         {where.clause()}
@@ -362,7 +375,7 @@ async def requeue(req: Request, res: Response, ctx: Context):
         p1 = '?' if executor.engine == 'sqlite' else '$1'
         p2 = '?' if executor.engine == 'sqlite' else '$2'
         upd = f'''UPDATE {x}gists SET sleep_until = {p1}{cast}, retries = 0, completed = 0,
-            last_error = NULL, last_status_code = NULL WHERE rowid = {p2};'''
+            last_error = NULL, last_status_code = NULL, dead_at = NULL WHERE rowid = {p2};'''
         try: await executor.fetch(0).execute(upd, now, row[0])
         except Exception as exc: return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
 
@@ -435,7 +448,7 @@ async def backfill(req: Request, res: Response, ctx: Context):
         FROM {x}events e {where_sql}
         ON CONFLICT (event, subscription) DO UPDATE
             SET completed = 0, retries = 0, sleep_until = {excluded},
-                last_error = NULL, last_status_code = NULL;
+                last_error = NULL, last_status_code = NULL, dead_at = NULL;
     '''
     try:
         await executor.fetch(0).execute(insert_sql, *args)
