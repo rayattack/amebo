@@ -11,6 +11,12 @@
     loading: false,
     busy: null,
 
+    gistDetail: null,
+    gistDetailIDE: null,
+    subDetail: null,
+    subGists: [],
+    subLoading: false,
+
     showBackfill: false,
     backfillSub: null,
     backfillSubName: '',
@@ -68,6 +74,37 @@
             .then(data => { ShowFeedback('success', `Gist ${id} requeued — daemon will retry it`); this.refresh(); })
             .catch(err => ShowFeedback('error', err?.error || 'Requeue failed'))
             .finally(() => { this.busy = null; });
+    },
+
+    statusClass(s){ return { delivered: 'success', failed: 'danger', retrying: 'warning', pending: '' }[s] || ''; },
+
+    fmtDate(v){ return v ? new Date(String(v).replace(' ', 'T')).toLocaleString() : '—'; },
+
+    openGist(g){
+        this.gistDetail = g;
+        this.$nextTick(() => {
+            const el = document.getElementById('dash-gist-ide');
+            if(!el) return;
+            this.gistDetailIDE = ace.edit(el);
+            this.gistDetailIDE.session.setMode('ace/mode/json');
+            const dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+            this.gistDetailIDE.setTheme(dark ? 'ace/theme/one_dark' : 'ace/theme/chrome');
+            this.gistDetailIDE.setOptions({ readOnly: true, fontSize: 13, showPrintMargin: false, wrap: true, tabSize: 2 });
+            this.gistDetailIDE.setValue(prettyJson(g.payload || {}));
+            this.gistDetailIDE.clearSelection();
+        });
+    },
+
+    closeGist(){ this.gistDetail = null; if(this.gistDetailIDE){ this.gistDetailIDE.destroy(); this.gistDetailIDE = null; } },
+
+    openSub(s){
+        this.subDetail = s;
+        this.subGists = [];
+        this.subLoading = true;
+        fetch(`/v1/gists?subscription=${encodeURIComponent(s.subscription)}&pagination=100`, { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => { this.subGists = data.data || []; this.subLoading = false; })
+            .catch(() => { this.subLoading = false; ShowFeedback('error', 'Failed to load subscription deliveries'); });
     },
 
     openBackfill(sub){
@@ -181,7 +218,7 @@
                 </thead>
                 <tbody>
                     <template x-for="g in failures" :key="g.id">
-                        <tr>
+                        <tr class="cursor-pointer" @click="openGist(g)">
                             <td><span class="fw-medium" x-text="g.action"></span></td>
                             <td><span class="tag-id" x-show="g.workspace" x-text="g.workspace" :title="g.workspace"></span><span class="text-muted-custom text-sm" x-show="!g.workspace">—</span></td>
                             <td class="text-sm"><span x-text="g.publisher"></span> &rarr; <span x-text="g.subscriber"></span></td>
@@ -191,11 +228,11 @@
                             <td><span class="text-muted-custom text-sm" :title="g.last_error || ''" x-text="(g.last_error || '—').slice(0, 60)"></span></td>
                             <td><span class="text-muted-custom text-sm" x-text="g.last_attempted_at ? new Date(String(g.last_attempted_at).replace(' ', 'T')).toLocaleString() : '—'"></span></td>
                             <td>
-                                <button class="btn-action" @click="replayOne(g.id)" :disabled="busy === g.id" title="Replay now">
+                                <button class="btn-action" @click.stop="replayOne(g.id)" :disabled="busy === g.id" title="Replay now">
                                     <span class="material-icons" x-show="busy !== g.id">replay</span>
                                     <span class="spinner-border spinner-border-sm" x-show="busy === g.id" x-cloak></span>
                                 </button>
-                                <button class="btn-action" @click="requeueOne(g.id)" :disabled="busy === g.id" title="Requeue">
+                                <button class="btn-action" @click.stop="requeueOne(g.id)" :disabled="busy === g.id" title="Requeue">
                                     <span class="material-icons" x-show="busy !== g.id">schedule_send</span>
                                     <span class="spinner-border spinner-border-sm" x-show="busy === g.id" x-cloak></span>
                                 </button>
@@ -226,7 +263,7 @@
                 </thead>
                 <tbody>
                     <template x-for="s in subs" :key="s.subscription">
-                        <tr>
+                        <tr class="cursor-pointer" @click="openSub(s)">
                             <td><span class="tag-id" x-text="s.subscriber"></span></td>
                             <td><span class="fw-medium" x-text="s.action"></span></td>
                             <td><code class="font-mono text-sm text-truncate d-inline-block" style="max-width: 280px; vertical-align: bottom;"
@@ -235,7 +272,7 @@
                             <td><span class="badge-status" :class="s.failed > 0 ? 'danger' : ''" x-text="s.failed"></span></td>
                             <td><span class="text-muted-custom text-sm" :title="s.last_error || ''" x-text="s.last_error ? s.last_error.slice(0, 70) : '—'"></span></td>
                             <td>
-                                <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" @click="openBackfill(s)" title="Replay historical events to this subscription">
+                                <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" @click.stop="openBackfill(s)" title="Replay historical events to this subscription">
                                     <span class="material-icons" style="font-size: 15px;">history</span> Backfill
                                 </button>
                             </td>
@@ -246,6 +283,96 @@
                     </template>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- Gist detail modal (opened from Needs attention or a subscription drill-down) -->
+    <div class="modal fade" :class="gistDetail ? 'show d-block' : ''" tabindex="-1"
+        style="background: rgba(0,0,0,0.4); z-index: 1060;" x-show="gistDetail" x-transition.opacity x-cloak>
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 720px;">
+            <div class="modal-content border-0 shadow-lg" x-show="gistDetail">
+                <div class="modal-header border-bottom-0 pb-0">
+                    <h5 class="modal-title fw-bold">Delivery <span x-text="gistDetail?.id"></span></h5>
+                    <button type="button" class="btn-close" @click="closeGist()"></button>
+                </div>
+                <div class="modal-body" x-show="gistDetail">
+                    <div class="d-flex flex-wrap gap-3 mb-3">
+                        <div class="detail-field"><span class="field-label">Status</span>
+                            <span class="badge-status" :class="statusClass(gistDetail?.status)" x-text="gistDetail?.status"></span></div>
+                        <div class="detail-field"><span class="field-label">Attempts</span>
+                            <span class="field-value" x-text="`${gistDetail?.retries} / ${gistDetail?.max_retries}`"></span></div>
+                        <div class="detail-field"><span class="field-label">Last code</span>
+                            <span class="field-value" x-text="gistDetail?.last_status_code || '—'"></span></div>
+                        <div class="detail-field"><span class="field-label">Action</span>
+                            <span class="field-value" x-text="gistDetail?.action"></span></div>
+                        <div class="detail-field"><span class="field-label">Endpoint</span>
+                            <span class="field-value font-mono text-sm" x-text="gistDetail?.endpoint"></span></div>
+                        <template x-if="gistDetail?.workspace">
+                            <div class="detail-field"><span class="field-label">Workspace</span>
+                                <span class="field-value"><span class="tag-id" x-text="gistDetail?.workspace"></span></span></div>
+                        </template>
+                    </div>
+                    <template x-if="gistDetail?.last_error">
+                        <div>
+                            <label class="form-label-sm" x-text="`Response${gistDetail?.last_status_code ? ' · HTTP '+gistDetail.last_status_code : ''}`"></label>
+                            <div class="alert alert-danger py-2 px-3 text-sm" style="white-space: pre-wrap; max-height: 200px; overflow: auto;" x-text="gistDetail?.last_error"></div>
+                        </div>
+                    </template>
+                    <template x-if="gistDetail?.metadata && Object.keys(gistDetail.metadata).length">
+                        <div>
+                            <label class="form-label-sm">Metadata</label>
+                            <pre class="font-mono text-sm" style="background: var(--amebo-bg-subtle); border: 1px solid var(--amebo-border-subtle); border-radius: 8px; padding: 10px; max-height: 160px; overflow: auto; margin-bottom: 0.75rem;" x-text="prettyJson(gistDetail.metadata)"></pre>
+                        </div>
+                    </template>
+                    <label class="form-label-sm">Payload</label>
+                    <div id="dash-gist-ide" style="height: 260px; border: 1px solid var(--amebo-border-subtle); border-radius: 8px;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-sm btn-outline-secondary" @click="requeueOne(gistDetail.id); closeGist()">Requeue</button>
+                    <button class="btn btn-sm btn-dark d-inline-flex align-items-center gap-1" @click="replayOne(gistDetail.id); closeGist()">
+                        <span class="material-icons" style="font-size: 16px;">replay</span> Replay now
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Subscription drill-down: its deliveries, each clickable into the gist detail -->
+    <div class="modal fade" :class="subDetail ? 'show d-block' : ''" tabindex="-1"
+        style="background: rgba(0,0,0,0.4);" x-show="subDetail" x-transition.opacity x-cloak>
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 860px;">
+            <div class="modal-content border-0 shadow-lg" x-show="subDetail">
+                <div class="modal-header border-bottom-0 pb-0">
+                    <div>
+                        <h5 class="modal-title fw-bold"><span x-text="subDetail?.subscriber"></span> · <span x-text="subDetail?.action"></span></h5>
+                        <p class="text-muted-custom text-sm mb-0"><code class="font-mono" x-text="subDetail?.handler"></code></p>
+                    </div>
+                    <button type="button" class="btn-close" @click="subDetail = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="loading-spinner mb-2" x-show="subLoading"><div class="spinner-border spinner-border-sm"></div><span>Loading...</span></div>
+                    <div class="data-table-wrapper" style="max-height: 420px; overflow: auto;">
+                        <table class="data-table">
+                            <thead><tr><th style="width:6%">ID</th><th style="width:12%">Status</th><th>Workspace</th><th style="width:7%">Code</th><th>Last error</th><th style="width:16%">Last attempt</th></tr></thead>
+                            <tbody>
+                                <template x-for="g in subGists" :key="g.id">
+                                    <tr class="cursor-pointer" @click="openGist(g)">
+                                        <td><span class="tag-id" x-text="g.id"></span></td>
+                                        <td><span class="badge-status" :class="statusClass(g.status)" x-text="g.status"></span></td>
+                                        <td><span class="tag-id" x-show="g.workspace" x-text="g.workspace"></span><span class="text-muted-custom" x-show="!g.workspace">—</span></td>
+                                        <td class="text-sm" x-text="g.last_status_code || '—'"></td>
+                                        <td><span class="text-muted-custom text-sm" :title="g.last_error || ''" x-text="(g.last_error || '—').slice(0,60)"></span></td>
+                                        <td><span class="text-muted-custom text-sm" x-text="fmtDate(g.last_attempted_at)"></span></td>
+                                    </tr>
+                                </template>
+                                <template x-if="subGists.length === 0 && !subLoading">
+                                    <tr><td colspan="6"><div class="empty-state"><span class="material-icons">inbox</span><p>No deliveries for this subscription</p></div></td></tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
