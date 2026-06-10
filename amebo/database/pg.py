@@ -79,5 +79,10 @@ SET search_path TO _amebo_;
     ALTER TABLE _amebo_.applications ADD COLUMN IF NOT EXISTS apikey text;
     ALTER TABLE _amebo_.applications ADD COLUMN IF NOT EXISTS active integer NOT NULL DEFAULT 1;
 
+    -- delivery-result tracking on gists (P0: make failures visible)
+    ALTER TABLE _amebo_.gists ADD COLUMN IF NOT EXISTS last_status_code integer;
+    ALTER TABLE _amebo_.gists ADD COLUMN IF NOT EXISTS last_error text;
+    ALTER TABLE _amebo_.gists ADD COLUMN IF NOT EXISTS last_attempted_at timestamptz;
+
 SET search_path TO public;
 '''

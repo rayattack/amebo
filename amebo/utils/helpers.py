@@ -45,6 +45,39 @@ def get_timeline(timeline, step_or_filter, column: str = None):
     return ''
 
 
+MAX_ERROR_LENGTH = 500
+
+# Canonical delivery-status vocabulary. "failed" == exhausted (out of retries).
+DELIVERY_STATUSES = ('pending', 'retrying', 'delivered', 'failed')
+
+
+def status_expr(g: str = 'g', s: str = 's'):
+    """The single source of truth for a gist's delivery status, as a SQL CASE
+    expression. Reused by the gists API, the dashboard metrics, and any filter so
+    'failed/exhausted' means the exact same thing everywhere.
+
+    Requires the query to join gists (alias `g`) to subscriptions (alias `s`) so
+    `max_retries` is in scope.
+        delivered -> handler accepted (completed)
+        failed    -> exhausted: out of retries and never accepted
+        retrying  -> attempted at least once, retries remain
+        pending   -> not yet attempted
+    """
+    return f'''CASE
+        WHEN {g}.completed <> 0 THEN 'delivered'
+        WHEN {g}.retries >= {s}.max_retries THEN 'failed'
+        WHEN {g}.retries > 0 THEN 'retrying'
+        ELSE 'pending'
+    END'''
+
+
+def truncate_error(value, limit: int = MAX_ERROR_LENGTH):
+    """Clamp an error/response-body snippet so last_error never bloats a row."""
+    if value is None: return None
+    text = value if isinstance(value, str) else str(value)
+    return text if len(text) <= limit else text[:limit]
+
+
 def tokenize(data, sk):
     return encode(data, sk, algorithm=HS256)
 

@@ -12,8 +12,9 @@ from orjson import loads
 
 # src code
 from amebo.constants.literals import DB, X_AMEBO_SIGNATURE
+from amebo.controllers.gists import writeback_attempt
 from amebo.decorators.providers import Executor
-from amebo.utils.helpers import datasigner
+from amebo.utils.helpers import datasigner, truncate_error
 
 logger = logging.getLogger('amebo.aproko')
 
@@ -21,53 +22,53 @@ logger = logging.getLogger('amebo.aproko')
 async def aproko(router: Router):
     executor = Executor(router)
     x = executor.schema
-    accepters = []
-    rejecters = []
+    # Each entry records the outcome of one attempt so reconcile can write the
+    # delivery result (status code / error / attempted_at) back onto the gist row.
+    results = []
 
     # Check if database is available
     if executor.db is None and executor.engine and executor.engine.startswith('postgres'):
         logger.warning('Database connection not available, aproko daemon will not run')
         return False
 
-    async def notify(endpoint: str, data: dict, metadata: dict, secret: str, gist_id: str, attempt_number: int, action: str):
+    async def notify(endpoint: str, data: dict, metadata: dict, secret: str, rowid, header_id: str, attempt_number: int, action: str):
         payload= {'action': action, 'metadata': metadata, 'payload': data}
         headers = {
             'Content-Type': 'application/json',
             X_AMEBO_SIGNATURE: datasigner(payload, secret),
-            'x-amebo-event-id': gist_id,  # For idempotency
+            'x-amebo-event-id': str(header_id),  # For idempotency
             'x-amebo-delivery-attempt': str(attempt_number),  # Our delivery tracking
         }
 
+        attempted_at = datetime.now().isoformat()
+        outcome = {'rowid': rowid, 'ok': False, 'code': None, 'error': None, 'at': attempted_at}
         client = None
         try:
             timeout = Timeout(10.0, connect=5.0)
             client = AsyncClient(timeout=timeout)
             result = await client.post(endpoint, json=payload, headers=headers)
-
-            if 200 <= result.status_code < 300: accepters.append(gist_id)
-            else: rejecters.append(gist_id)
-        except ReadTimeout:
-            accepters.append(gist_id)
-        except Exception as exc:
+            outcome['code'] = result.status_code
+            if 200 <= result.status_code < 300:
+                outcome['ok'] = True
+            else:
+                outcome['error'] = truncate_error(result.text)
+        except (ReadTimeout, Exception) as exc:
+            # A timeout is NOT a success — the handler may never have run. Record it
+            # as a failed attempt so the gist remains visible and retryable.
             logger.error('Delivery failed for %s: %s', endpoint, exc)
-            rejecters.append(gist_id)
+            outcome['error'] = truncate_error(f'{type(exc).__name__}: {exc}')
         finally:
             if client: await client.aclose()
+            results.append(outcome)
 
     async def reconcile():
-        try:
-            if rejecters:
-                rejections = str(tuple(rejecters)).replace(',)', ')')
-                sqls = f'''UPDATE {x}gists SET retries = retries + 1 WHERE gist IN {rejections};'''
-                await executor.fetch(0).execute(sqls)
-        except Exception as exc: logger.error('Could not update rejections: %s', exc)
-
-        try:
-            if accepters:
-                acceptances = str(tuple(accepters)).replace(',)', ')')
-                sqls = f'''UPDATE {x}gists SET completed = 1, retries = retries + 1 WHERE gist IN {acceptances};'''
-                await executor.fetch(0).execute(sqls)
-        except Exception as exc: logger.error('Could not update acceptances: %s', exc)
+        # Write each attempt's result back onto its gist row, keyed on rowid (the
+        # one identifier present on both PostgreSQL and SQLite). Shares the exact
+        # write path as UI replay so daemon and replay record results identically.
+        for r in results:
+            try: await writeback_attempt(executor, r['rowid'], r['ok'], r['code'], r['error'], r['at'])
+            except Exception as exc: logger.error('Could not reconcile gist %s: %s', r['rowid'], exc)
+        results.clear()
 
     async def traverse():
         try:
@@ -95,8 +96,8 @@ async def aproko(router: Router):
                         RETURNING g.gist
                     )
                     SELECT
-                        s.handler AS endpoint, e.payload, e.metadata, a.secret, g.gist as gid,
-                        g.retries, e.action
+                        s.handler AS endpoint, e.payload, e.metadata, a.secret, g.rowid as gid,
+                        g.gist as header_id, g.retries, e.action
                     FROM {x}gists AS g
                     JOIN leased l ON g.gist = l.gist
                     JOIN {x}events e ON g.event = e.event
@@ -107,10 +108,13 @@ async def aproko(router: Router):
                 gists = await executor.fetch(2).execute(sqls, now, lease_expiry)
             else:
                 now_iso = now.isoformat()
+                # SQLite has no `gist` uuid column — address rows by rowid and use the
+                # event uuid as the idempotency header. Lease via sleep_until so a slow
+                # handler isn't re-picked on every poll.
                 sqls = f'''
                     SELECT
-                        s.handler AS endpoint, e.payload, e.metadata, a.secret, g.gist as gid,
-                        g.retries, e.action
+                        s.handler AS endpoint, e.payload, e.metadata, a.secret, g.rowid as gid,
+                        g.event as header_id, g.retries, e.action
                     FROM {x}gists AS g JOIN {x}events e ON
                         g.event = e.event
                     JOIN {x}subscriptions s ON
@@ -121,13 +125,18 @@ async def aproko(router: Router):
                         s.application = a.application
                     WHERE g.completed <> 1
                     AND g.retries < s.max_retries
-                    AND (g.sleep_until IS NULL OR g.sleep_until < '{now_iso}'::timestamp)
-                    ORDER BY g.event LIMIT {router.CONFIG('envelope_size')};
+                    AND (g.sleep_until IS NULL OR g.sleep_until < '{now_iso}')
+                    ORDER BY g.timestamped LIMIT {router.CONFIG('envelope_size')};
                 '''
                 gists = await executor.fetch(2).execute(sqls)
+                # lease the picked sqlite rows so they aren't re-fetched mid-flight
+                lease = (now + timedelta(seconds=60)).isoformat()
+                for row in (gists or []):
+                    try: await executor.fetch(0).execute(f"UPDATE {x}gists SET sleep_until = ? WHERE rowid = ?;", lease, row[4])
+                    except Exception as exc: logger.error('Could not lease sqlite gist: %s', exc)
 
             if gists is None: gists = []
-            await gather(*[notify(endpoint, loads(payload), loads(metadata), secret, str(gid), retries, action) for endpoint, payload, metadata, secret, gid, retries, action in gists])
+            await gather(*[notify(endpoint, loads(payload), loads(metadata), secret, gid, header_id, retries, action) for endpoint, payload, metadata, secret, gid, header_id, retries, action in gists])
             await reconcile()
             return len(gists)
         except Exception as exc:

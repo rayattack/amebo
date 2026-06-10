@@ -83,6 +83,7 @@
 
       <nav class="sidebar-nav">
         {% set navs = [
+          ('dashboard', 'monitoring', 'Dashboard'),
           ('applications', 'layers', 'Applications'),
           ('actions', 'bolt', 'Actions'),
           ('events', 'notifications_active', 'Events'),

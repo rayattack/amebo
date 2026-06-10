@@ -69,7 +69,12 @@ router.POST('/v1/events', 'amebo.controllers.events.insert')
 router.POST('/v1/applications', 'amebo.controllers.applications.insert')
 router.POST('/v1/subscriptions', 'amebo.controllers.subscriptions.insert')
 router.POST('/v1/regists/:id', 'amebo.controllers.gists.replay')
-router.GET('/v1/regists', 'amebo.controllers.gists.time_travel')
+router.GET('/v1/regists', 'amebo.controllers.gists.time_travel')  # bulk replay dry-run (count)
+router.POST('/v1/regists', 'amebo.controllers.gists.bulk_replay')  # bulk replay (fire)
+router.POST('/v1/requeues', 'amebo.controllers.gists.requeue')  # hand failed gists back to daemon
+router.POST('/v1/backfills', 'amebo.controllers.gists.backfill')  # re-register subscription vs history
+router.GET('/v1/metrics/deliveries', 'amebo.controllers.metrics.deliveries')
+router.GET('/v1/metrics/subscriptions', 'amebo.controllers.metrics.subscriptions')
 router.PUT('/v1/applications/:id', 'amebo.controllers.applications.update')
 router.PUT('/v1/applications/:id/secret', 'amebo.controllers.applications.set_secret')
 router.POST('/v1/applications/:id/apikey', 'amebo.controllers.applications.regenerate_apikey')

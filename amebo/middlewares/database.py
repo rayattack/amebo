@@ -59,6 +59,10 @@ async def initialize(app: Application):
         for alter in [
             'ALTER TABLE applications ADD COLUMN apikey text',
             'ALTER TABLE applications ADD COLUMN active integer NOT NULL DEFAULT 1',
+            # delivery-result tracking on gists (P0: make failures visible)
+            'ALTER TABLE gists ADD COLUMN last_status_code integer',
+            'ALTER TABLE gists ADD COLUMN last_error text',
+            'ALTER TABLE gists ADD COLUMN last_attempted_at text',
         ]:
             try: db.execute(alter)
             except Exception: pass  # column already exists

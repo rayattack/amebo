@@ -1,0 +1,272 @@
+{% extends 'clean_base.axml' %}
+
+{% set modal_name = 'Dashboard' %}
+
+{% macro dashctrl() %}
+{
+    window: 'all',
+    metrics: { published: 0, delivered: 0, retrying: 0, pending: 0, failed: 0, total: 0, success_rate: null },
+    failures: [],
+    subs: [],
+    loading: false,
+
+    showBackfill: false,
+    backfillSub: null,
+    backfillSubName: '',
+    backfillSince: '',
+    backfillCount: null,
+    backfillRunning: false,
+
+    init(){ this.refresh(); },
+
+    refresh(){ this.loadMetrics(); this.loadFailures(); this.loadSubs(); },
+
+    loadMetrics(){
+        fetch(`/v1/metrics/deliveries?window=${this.window}`, { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => { this.metrics = data; })
+            .catch(() => ShowFeedback('error', 'Failed to load metrics'));
+    },
+
+    loadFailures(){
+        this.loading = true;
+        fetch('/v1/gists?status=failed&pagination=50', { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => { this.failures = data.data || []; this.loading = false; })
+            .catch(() => { this.loading = false; });
+    },
+
+    loadSubs(){
+        fetch('/v1/metrics/subscriptions', { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => { this.subs = data.data || []; })
+            .catch(() => {});
+    },
+
+    setWindow(w){ this.window = w; this.loadMetrics(); },
+
+    fmtRate(){ return this.metrics.success_rate === null ? '—' : `${this.metrics.success_rate}%`; },
+
+    replayOne(id){
+        fetch(`/v1/regists/${id}`, { method: 'POST', credentials: 'include' })
+            .then(r => r.json())
+            .then(data => {
+                if(data.delivered) ShowFeedback('success', `Gist ${id} delivered`);
+                else ShowFeedback('warning', `Gist ${id} still failing`);
+                this.refresh();
+            })
+            .catch(() => ShowFeedback('error', 'Replay failed'));
+    },
+
+    requeueOne(id){
+        fetch(`/v1/requeues?gist=${id}`, { method: 'POST', credentials: 'include' })
+            .then(r => r.json())
+            .then(() => { ShowFeedback('info', `Gist ${id} requeued`); this.refresh(); })
+            .catch(() => ShowFeedback('error', 'Requeue failed'));
+    },
+
+    openBackfill(sub){
+        this.backfillSub = sub.subscription;
+        this.backfillSubName = `${sub.subscriber} · ${sub.action}`;
+        this.backfillSince = '';
+        this.backfillCount = null;
+        this.showBackfill = true;
+        this.dryBackfill();
+    },
+
+    dryBackfill(){
+        fetch('/v1/backfills', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subscription: this.backfillSub, since: this.backfillSince, dry_run: true })
+        }).then(r => r.json()).then(data => { this.backfillCount = data.count; })
+          .catch(() => ShowFeedback('error', 'Could not compute backfill count'));
+    },
+
+    runBackfill(){
+        this.backfillRunning = true;
+        fetch('/v1/backfills', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subscription: this.backfillSub, since: this.backfillSince })
+        }).then(r => r.json()).then(data => {
+            this.backfillRunning = false; this.showBackfill = false;
+            ShowFeedback('success', `Backfilling ${data.backfilled} historical events to this subscription`);
+            this.refresh();
+        }).catch(() => { this.backfillRunning = false; ShowFeedback('error', 'Backfill failed'); });
+    }
+}
+{% endmacro %}
+
+
+{% block easel %}
+<section x-data="{{ dashctrl() }}">
+    <div class="page-content-scroll">
+        <div class="page-header d-flex align-items-start justify-content-between">
+            <div>
+                <h1 class="page-title">Deliveries health</h1>
+                <p class="page-subtitle">Delivery success, failures &amp; recovery at a glance</p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <div class="btn-group btn-group-sm" role="group">
+                    <template x-for="w in [['today','Today'],['7d','7d'],['30d','30d'],['all','All']]" :key="w[0]">
+                        <button type="button" class="btn"
+                            :class="window === w[0] ? 'btn-dark' : 'btn-outline-secondary'"
+                            @click="setWindow(w[0])" x-text="w[1]"></button>
+                    </template>
+                </div>
+                <button class="btn btn-sm btn-outline-secondary btn-icon" @click="refresh" title="Refresh">
+                    <span class="material-icons" style="font-size: 18px;">refresh</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Stat cards -->
+        <div class="row g-3 mb-4">
+            <div class="col">
+                <div class="detail-panel p-3 h-100">
+                    <span class="field-label">Published</span>
+                    <div class="fw-bold" style="font-size: 1.6rem;" x-text="metrics.published"></div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="detail-panel p-3 h-100">
+                    <span class="field-label">Delivered</span>
+                    <div class="fw-bold" style="font-size: 1.6rem; color: var(--amebo-success);" x-text="metrics.delivered"></div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="detail-panel p-3 h-100">
+                    <span class="field-label">Retrying</span>
+                    <div class="fw-bold" style="font-size: 1.6rem; color: var(--amebo-warning);" x-text="metrics.retrying"></div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="detail-panel p-3 h-100">
+                    <span class="field-label">Failed</span>
+                    <div class="fw-bold" style="font-size: 1.6rem; color: var(--amebo-danger);" x-text="metrics.failed"></div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="detail-panel p-3 h-100">
+                    <span class="field-label">Success rate</span>
+                    <div class="fw-bold" style="font-size: 1.6rem;" x-text="fmtRate()"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Needs attention -->
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h6 class="fw-bold mb-0">Needs attention <span class="text-muted-custom" x-text="`(${failures.length})`"></span></h6>
+        </div>
+        <div class="data-table-wrapper mb-4" style="max-height: 340px; overflow: auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Action</th>
+                        <th>Publisher &rarr; Subscriber</th>
+                        <th>Endpoint</th>
+                        <th style="width: 7%">Attempts</th>
+                        <th style="width: 6%">Code</th>
+                        <th>Last error</th>
+                        <th style="width: 12%">Last attempt</th>
+                        <th style="width: 10%">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="g in failures" :key="g.id">
+                        <tr>
+                            <td><span class="fw-medium" x-text="g.action"></span></td>
+                            <td class="text-sm"><span x-text="g.publisher"></span> &rarr; <span x-text="g.subscriber"></span></td>
+                            <td><code class="font-mono text-sm" x-text="g.endpoint"></code></td>
+                            <td class="text-sm" x-text="`${g.retries} / ${g.max_retries}`"></td>
+                            <td class="text-sm" x-text="g.last_status_code || '—'"></td>
+                            <td><span class="text-muted-custom text-sm" :title="g.last_error || ''" x-text="(g.last_error || '—').slice(0, 60)"></span></td>
+                            <td><span class="text-muted-custom text-sm" x-text="g.last_attempted_at ? new Date(String(g.last_attempted_at).replace(' ', 'T')).toLocaleString() : '—'"></span></td>
+                            <td>
+                                <button class="btn-action" @click="replayOne(g.id)" title="Replay now"><span class="material-icons">replay</span></button>
+                                <button class="btn-action" @click="requeueOne(g.id)" title="Requeue"><span class="material-icons">schedule_send</span></button>
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-if="failures.length === 0 && !loading">
+                        <tr><td colspan="8"><div class="empty-state"><span class="material-icons">check_circle</span><p>No failed deliveries — all healthy</p></div></td></tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Per-subscription health -->
+        <h6 class="fw-bold mb-2">Subscription health</h6>
+        <div class="data-table-wrapper" style="max-height: 360px; overflow: auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Subscriber</th>
+                        <th>Action</th>
+                        <th>Endpoint</th>
+                        <th style="width: 8%">Delivered</th>
+                        <th style="width: 8%">Failed</th>
+                        <th>Most recent error</th>
+                        <th style="width: 12%">Backfill</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="s in subs" :key="s.subscription">
+                        <tr>
+                            <td><span class="tag-id" x-text="s.subscriber"></span></td>
+                            <td><span class="fw-medium" x-text="s.action"></span></td>
+                            <td><code class="font-mono text-sm" x-text="s.handler"></code></td>
+                            <td><span class="badge-status success" x-text="s.delivered"></span></td>
+                            <td><span class="badge-status" :class="s.failed > 0 ? 'danger' : ''" x-text="s.failed"></span></td>
+                            <td><span class="text-muted-custom text-sm" :title="s.last_error || ''" x-text="s.last_error ? s.last_error.slice(0, 70) : '—'"></span></td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" @click="openBackfill(s)" title="Replay historical events to this subscription">
+                                    <span class="material-icons" style="font-size: 15px;">history</span> Backfill
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-if="subs.length === 0">
+                        <tr><td colspan="7"><div class="empty-state"><span class="material-icons">rss_feed</span><p>No subscriptions yet</p></div></td></tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Backfill modal -->
+    <div class="modal fade" :class="showBackfill ? 'show d-block' : ''" tabindex="-1"
+        style="background: rgba(0,0,0,0.4);" x-show="showBackfill" x-transition.opacity x-cloak>
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 480px;">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-bottom-0 pb-0">
+                    <h5 class="modal-title fw-bold">Backfill subscription</h5>
+                    <button type="button" class="btn-close" @click="showBackfill = false"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-sm mb-3"><span class="fw-medium" x-text="backfillSubName"></span></p>
+                    <label class="form-label-sm">Replay events since</label>
+                    <select class="form-select mb-3" x-model="backfillSince" @change="dryBackfill()">
+                        <option value="">All history</option>
+                        <option value="month">Last 31 days</option>
+                        <option value="week">Last 7 days</option>
+                        <option value="today">Last 24 hours</option>
+                    </select>
+                    <p class="text-muted-custom text-sm mb-0">
+                        This will (re)create deliveries for <strong x-text="backfillCount === null ? '…' : backfillCount"></strong>
+                        historical events and hand them to the retry daemon. Safe to re-run.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-sm btn-outline-secondary" @click="showBackfill = false">Cancel</button>
+                    <button class="btn btn-sm btn-dark d-inline-flex align-items-center gap-1" @click="runBackfill" :disabled="backfillRunning || backfillCount === 0">
+                        <span class="material-icons" style="font-size: 16px;">history</span>
+                        <span x-text="backfillRunning ? 'Backfilling...' : 'Backfill now'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

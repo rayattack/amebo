@@ -1,211 +1,379 @@
 {% extends 'clean_base.axml' %}
 {% from 'actions.axml' import pagination %}
 
-{% set modal_name = 'Gist Details' %}
+{% set modal_name = 'Gists' %}
 
-{% macro commander() %}
+{% macro gistctrl() %}
 {
-    isFilterable: false,
-    originSearch: '',
-    completedFilter: '',
-    destinationSearch: '',
+    gists: [],
+    total: 0,
+    pages: 1,
+    page: 1,
+    pagination: 25,
+    loading: false,
+    isFiltering: false,
+    previewing: null,
+    previewIDE: null,
+
     gistSearch: '',
+    originSearch: '',
+    destinationSearch: '',
     eventSearch: '',
+    actionSearch: '',
+    statusFilter: '',
     whenFilter: '',
 
-    filterResults(){
-        let base = `/v1/gists?pagination=${this.pagination}&page=1`
-        if(this.originSearch) base += `&origin=${this.originSearch}`
-        if(this.completedFilter) base += `&completed=${this.completedFilter}`
-        if(this.destinationSearch) base += `&destination=${this.destinationSearch}`
-        if(this.gistSearch) base += `&gist=${this.gistSearch}`
-        if(this.eventSearch) base += `&event=${this.eventSearch}`
-        if(this.whenFilter) base += `&timeline=${this.whenFilter}`
-        fetch(base)
+    selected: {},
+    bulkCount: null,
+    bulkRunning: false,
+    showConfirm: false,
+
+    buildQuery(page){
+        let q = `/v1/gists?pagination=${this.pagination}&page=${page || this.page}`;
+        if(this.gistSearch) q += `&gist=${encodeURIComponent(this.gistSearch)}`;
+        if(this.originSearch) q += `&origin=${encodeURIComponent(this.originSearch)}`;
+        if(this.destinationSearch) q += `&destination=${encodeURIComponent(this.destinationSearch)}`;
+        if(this.eventSearch) q += `&event=${encodeURIComponent(this.eventSearch)}`;
+        if(this.actionSearch) q += `&action=${encodeURIComponent(this.actionSearch)}`;
+        if(this.statusFilter) q += `&status=${this.statusFilter}`;
+        if(this.whenFilter) q += `&timeline=${this.whenFilter}`;
+        return q;
+    },
+
+    filterQuery(){
+        let q = '';
+        if(this.gistSearch) q += `&gist=${encodeURIComponent(this.gistSearch)}`;
+        if(this.originSearch) q += `&origin=${encodeURIComponent(this.originSearch)}`;
+        if(this.destinationSearch) q += `&destination=${encodeURIComponent(this.destinationSearch)}`;
+        if(this.eventSearch) q += `&event=${encodeURIComponent(this.eventSearch)}`;
+        if(this.actionSearch) q += `&action=${encodeURIComponent(this.actionSearch)}`;
+        if(this.statusFilter) q += `&status=${this.statusFilter}`;
+        if(this.whenFilter) q += `&timeline=${this.whenFilter}`;
+        return q;
+    },
+
+    load(showSpinner){
+        if(showSpinner) this.loading = true;
+        fetch(this.buildQuery())
             .then(r => r.json())
             .then(data => {
-                isFiltering = true;
-                gists = data;
-            }).catch(err => ShowFeedback('error', 'Filter operation failed'))
+                this.gists = data.data || [];
+                this.total = data.total || 0;
+                this.pages = data.pages || 1;
+                this.loading = false;
+            })
+            .catch(() => { this.loading = false; ShowFeedback('error', 'Failed to fetch gists'); });
     },
 
-    clearFilter(){
-        this.originSearch = '';
-        this.completedFilter = '';
-        this.destinationSearch = '';
-        this.gistSearch = '';
-        this.eventSearch = '';
-        this.whenFilter = '';
-        isFiltering = false;
-        fetchAll();
+    fetchAll(){ this.load(true); },
+    refreshPage(){ this.load(false); },
+
+    pageDown(){ if(this.page <= 1) return; this.page -= 1; this.fetchAll(); },
+    pageUp(){ if(this.page >= this.pages) return; this.page += 1; this.fetchAll(); },
+
+    applyFilters(){ this.page = 1; this.isFiltering = true; this.fetchAll(); },
+    clearFilters(){
+        this.gistSearch=''; this.originSearch=''; this.destinationSearch='';
+        this.eventSearch=''; this.actionSearch=''; this.statusFilter=''; this.whenFilter='';
+        this.isFiltering = false; this.page = 1; this.fetchAll();
     },
 
-    checkDirty(){
-        this.isFilterable = (
-            this.originSearch !== '' ||
-            this.completedFilter !== '' ||
-            this.destinationSearch !== '' ||
-            this.gistSearch !== '' ||
-            this.eventSearch !== '' ||
-            this.whenFilter !== ''
-        );
-        return this.isFilterable;
-    }
-}
-{% endmacro %}
+    statusClass(s){
+        return { delivered: 'success', failed: 'danger', retrying: 'warning', pending: '' }[s] || '';
+    },
 
-{% macro resendable() %}
-{
-    resending: null,
-    resendGist(gist){
-        this.resending = gist;
-        fetch(`/v1/regists/${gist}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'}
-        })
-        .then(r => r.json())
-        .then(data => {
-            this.resending = null;
-            if(data.error) return ShowFeedback('error', data.error);
-            ShowFeedback('success', `Gist ${gist} resent`);
-        })
-        .catch(err => {
-            this.resending = null;
-            ShowFeedback('error', 'Could not resend gist');
-        })
+    truncate(text, max){
+        if(!text) return '';
+        return text.length > max ? text.slice(0, max) + '...' : text;
+    },
+
+    toggle(id){ this.selected[id] = !this.selected[id]; },
+    selectedIds(){ return Object.keys(this.selected).filter(k => this.selected[k]); },
+    anySelected(){ return this.selectedIds().length > 0; },
+    clearSelection(){ this.selected = {}; },
+
+    replayOne(id){
+        fetch(`/v1/regists/${id}`, { method: 'POST', credentials: 'include' })
+            .then(r => r.json())
+            .then(data => {
+                if(data.delivered) ShowFeedback('success', `Gist ${id} delivered (${data.status_code})`);
+                else ShowFeedback('warning', `Gist ${id} still failing${data.status_code ? ' ('+data.status_code+')' : ''}`);
+                this.refreshPage();
+            })
+            .catch(() => ShowFeedback('error', 'Replay failed'));
+    },
+
+    requeueOne(id){
+        fetch(`/v1/requeues?gist=${id}`, { method: 'POST', credentials: 'include' })
+            .then(r => r.json())
+            .then(() => { ShowFeedback('info', `Gist ${id} requeued for the daemon`); this.refreshPage(); })
+            .catch(() => ShowFeedback('error', 'Requeue failed'));
+    },
+
+    askBulk(){
+        let q = this.filterQuery();
+        if(!this.statusFilter) q += '&status=failed';  // bulk defaults to failed
+        fetch(`/v1/regists?dummy=1${q}`, { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => { this.bulkCount = data.count || 0; this.showConfirm = true; })
+            .catch(() => ShowFeedback('error', 'Could not compute replay count'));
+    },
+
+    runBulk(){
+        let q = this.filterQuery();
+        if(!this.statusFilter) q += '&status=failed';
+        this.bulkRunning = true;
+        fetch(`/v1/regists?dummy=1${q}`, { method: 'POST', credentials: 'include' })
+            .then(r => r.json())
+            .then(data => {
+                this.bulkRunning = false; this.showConfirm = false; this.bulkCount = null;
+                ShowFeedback('success', `Replayed ${data.total}: ${data.succeeded} delivered, ${data.still_failing} still failing`);
+                this.refreshPage();
+            })
+            .catch(() => { this.bulkRunning = false; ShowFeedback('error', 'Bulk replay failed'); });
+    },
+
+    requeueFiltered(){
+        let q = this.filterQuery();
+        if(!this.statusFilter) q += '&status=failed';
+        fetch(`/v1/requeues?dummy=1${q}`, { method: 'POST', credentials: 'include' })
+            .then(r => r.json())
+            .then(data => { ShowFeedback('info', `${data.requeued} deliveries requeued for the daemon`); this.refreshPage(); })
+            .catch(() => ShowFeedback('error', 'Requeue failed'));
+    },
+
+    openPreview(gist){
+        this.previewing = gist;
+        this.$nextTick(() => {
+            const el = document.getElementById('gist-payload-ide');
+            if(!el) return;
+            this.previewIDE = ace.edit(el);
+            this.previewIDE.session.setMode('ace/mode/json');
+            const dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+            this.previewIDE.setTheme(dark ? 'ace/theme/one_dark' : 'ace/theme/chrome');
+            this.previewIDE.setOptions({ readOnly: true, fontSize: 13, showPrintMargin: false, wrap: true, tabSize: 2 });
+            this.previewIDE.setValue(prettyJson(gist.payload || {}));
+            this.previewIDE.clearSelection();
+        });
     }
 }
 {% endmacro %}
 
 
 {% block easel %}
-<section x-data="{{ controller('gists') }}">
-    <div x-data="{{ commander() }}" x-effect="checkDirty">
+<section x-data="{{ gistctrl() }}">
 
-        <div class="page-content-scroll">
-            <div class="page-header d-flex align-items-start justify-content-between">
-                <div>
-                    <h1 class="page-title">Gists</h1>
-                    <p class="page-subtitle">Webhook delivery log and retry management</p>
-                </div>
-                <div class="loading-spinner" x-show="loading" x-transition>
-                    <div class="spinner-border spinner-border-sm"></div>
-                    <span>Loading...</span>
-                </div>
+    <div class="page-content-scroll">
+        <div class="page-header d-flex align-items-start justify-content-between">
+            <div>
+                <h1 class="page-title">Gists</h1>
+                <p class="page-subtitle">Webhook delivery log, failure visibility &amp; replay</p>
             </div>
-
-            <div class="filter-bar">
-                <div class="input-icon">
-                    <span class="material-icons">tag</span>
-                    <input class="form-control" type="text" placeholder="Gist ID" x-model="gistSearch"
-                        style="width: 90px;">
-                </div>
-                <div class="input-icon">
-                    <span class="material-icons">upload</span>
-                    <input class="form-control" type="text" placeholder="Origin..."
-                        x-model="originSearch" style="width: 160px;">
-                </div>
-                <div class="input-icon">
-                    <span class="material-icons">download</span>
-                    <input class="form-control" type="text" placeholder="Destination..."
-                        x-model="destinationSearch" style="width: 160px;">
-                </div>
-                <div class="input-icon">
-                    <span class="material-icons">bolt</span>
-                    <input class="form-control" type="text" placeholder="Event name..."
-                        x-model="eventSearch" style="width: 160px;">
-                </div>
-                <select class="form-select" x-model="completedFilter" style="width: 130px;">
-                    <option value="">All Status</option>
-                    <option value="true">Completed</option>
-                    <option value="false">Pending</option>
-                </select>
-                <select class="form-select" x-model="whenFilter" style="width: 130px;">
-                    <option value="">Any Time</option>
-                    <option value="today">Today</option>
-                    <option value="week">This Week</option>
-                    <option value="month">This Month</option>
-                </select>
-                <button class="btn btn-dark btn-sm d-inline-flex align-items-center gap-1"
-                    @click="filterResults" :disabled="!isFilterable">
-                    <span class="material-icons" style="font-size: 16px;">search</span>
-                    Search
-                </button>
-                <button class="btn btn-sm btn-outline-secondary" @click="clearFilter"
-                    :disabled="!isFiltering" x-show="isFiltering" x-transition>
-                    Clear
-                </button>
+            <div class="loading-spinner" x-show="loading" x-transition>
+                <div class="spinner-border spinner-border-sm"></div>
+                <span>Loading...</span>
             </div>
         </div>
 
-        <div class="page-table-area">
-            <div class="data-table-wrapper" x-init="fetchAll()">
-                <div class="data-table-scroll">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th style="width: 7%">ID</th>
-                                <th style="width: 7%">Status</th>
-                                <th>Action</th>
-                                <th>Publisher</th>
-                                <th>Subscriber</th>
-                                <th>Endpoint</th>
-                                <th style="width: 15%">Timestamp</th>
-                                <th style="width: 7%">Resend</th>
-                            </tr>
-                        </thead>
-                        <tbody @refresher.window="refreshPage">
-                            <template x-for="gist in gists" :key="gist.gist">
-                                <tr>
-                                    <td>
-                                        <span class="tag-id" x-text="gist.gist"></span>
-                                    </td>
-                                    <td>
-                                        <span class="badge-status"
-                                            :class="gist.completed ? 'success' : 'warning'"
-                                            x-text="gist.completed ? 'Sent' : 'Pending'"></span>
-                                    </td>
-                                    <td>
-                                        <span class="fw-medium" x-text="gist.action"></span>
-                                    </td>
-                                    <td>
-                                        <span x-text="gist.publisher"></span>
-                                    </td>
-                                    <td>
-                                        <span x-text="gist.subscriber"></span>
-                                    </td>
-                                    <td>
-                                        <code class="font-mono text-sm" x-text="gist.endpoint"></code>
-                                    </td>
-                                    <td>
-                                        <span class="text-muted-custom text-sm" x-text="gist.timestamped"></span>
-                                    </td>
-                                    <td x-data="{{ resendable() }}">
-                                        <button class="btn-action" @click="resendGist(gist.gist)"
-                                            :disabled="resending === gist.gist" title="Resend">
-                                            <span class="material-icons"
-                                                :class="resending === gist.gist ? 'opacity-25' : ''">replay</span>
-                                        </button>
-                                    </td>
-                                </tr>
-                            </template>
-                            <template x-if="gists.length === 0 && !loading">
-                                <tr>
-                                    <td colspan="8">
-                                        <div class="empty-state">
-                                            <span class="material-icons">send</span>
-                                            <p>No delivery gists found</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </template>
-                        </tbody>
-                    </table>
-                </div>
-                {{ pagination() }}
+        <div class="filter-bar">
+            <div class="input-icon">
+                <span class="material-icons">tag</span>
+                <input class="form-control" type="text" placeholder="Gist ID" x-model="gistSearch" style="width: 90px;">
+            </div>
+            <div class="input-icon">
+                <span class="material-icons">bolt</span>
+                <input class="form-control" type="text" placeholder="Action..." x-model="actionSearch" style="width: 170px;">
+            </div>
+            <div class="input-icon">
+                <span class="material-icons">upload</span>
+                <input class="form-control" type="text" placeholder="Publisher..." x-model="originSearch" style="width: 150px;">
+            </div>
+            <div class="input-icon">
+                <span class="material-icons">download</span>
+                <input class="form-control" type="text" placeholder="Subscriber..." x-model="destinationSearch" style="width: 150px;">
+            </div>
+            <select class="form-select" x-model="statusFilter" style="width: 140px;">
+                <option value="">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="retrying">Retrying</option>
+                <option value="delivered">Delivered</option>
+                <option value="failed">Failed</option>
+            </select>
+            <select class="form-select" x-model="whenFilter" style="width: 120px;">
+                <option value="">Any Time</option>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+            </select>
+            <button class="btn btn-dark btn-sm d-inline-flex align-items-center gap-1" @click="applyFilters">
+                <span class="material-icons" style="font-size: 16px;">search</span> Search
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" @click="clearFilters" x-show="isFiltering" x-transition>Clear</button>
+
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1" @click="askBulk"
+                    title="Replay all deliveries matching the current filter (failed by default)">
+                    <span class="material-icons" style="font-size: 16px;">replay</span> Replay matching
+                </button>
+                <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" @click="requeueFiltered"
+                    title="Hand matching failed deliveries back to the retry daemon">
+                    <span class="material-icons" style="font-size: 16px;">schedule_send</span> Requeue
+                </button>
             </div>
         </div>
-
     </div>
+
+    <div class="page-table-area">
+        <div class="data-table-wrapper" x-init="fetchAll()">
+            <div class="data-table-scroll">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%">ID</th>
+                            <th style="width: 9%">Status</th>
+                            <th>Action</th>
+                            <th>Publisher &rarr; Subscriber</th>
+                            <th>Endpoint</th>
+                            <th style="width: 7%">Attempts</th>
+                            <th style="width: 6%">Code</th>
+                            <th>Last error</th>
+                            <th style="width: 13%">Last attempt</th>
+                            <th style="width: 9%">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody @refresher.window="refreshPage">
+                        <template x-for="gist in gists" :key="gist.id">
+                            <tr class="cursor-pointer">
+                                <td @click="openPreview(gist)"><span class="tag-id" x-text="gist.id"></span></td>
+                                <td @click="openPreview(gist)">
+                                    <span class="badge-status" :class="statusClass(gist.status)" x-text="gist.status"></span>
+                                </td>
+                                <td @click="openPreview(gist)"><span class="fw-medium" x-text="gist.action"></span></td>
+                                <td @click="openPreview(gist)">
+                                    <span class="text-sm" x-text="gist.publisher"></span>
+                                    <span class="text-muted-custom"> &rarr; </span>
+                                    <span class="text-sm" x-text="gist.subscriber"></span>
+                                </td>
+                                <td @click="openPreview(gist)"><code class="font-mono text-sm" x-text="gist.endpoint"></code></td>
+                                <td @click="openPreview(gist)">
+                                    <span class="text-sm" x-text="`${gist.retries} / ${gist.max_retries}`"></span>
+                                </td>
+                                <td @click="openPreview(gist)">
+                                    <span class="text-sm" x-text="gist.last_status_code || '—'"></span>
+                                </td>
+                                <td @click="openPreview(gist)">
+                                    <span class="text-muted-custom text-sm" x-text="truncate(gist.last_error, 48) || '—'"
+                                        :title="gist.last_error || ''"></span>
+                                </td>
+                                <td @click="openPreview(gist)">
+                                    <span class="text-muted-custom text-sm"
+                                        x-text="gist.last_attempted_at ? new Date(String(gist.last_attempted_at).replace(' ', 'T')).toLocaleString() : '—'"></span>
+                                </td>
+                                <td>
+                                    <button class="btn-action" @click.stop="replayOne(gist.id)" title="Replay now (inline)">
+                                        <span class="material-icons">replay</span>
+                                    </button>
+                                    <button class="btn-action" @click.stop="requeueOne(gist.id)" title="Requeue for daemon">
+                                        <span class="material-icons">schedule_send</span>
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="gists.length === 0 && !loading">
+                            <tr>
+                                <td colspan="10">
+                                    <div class="empty-state">
+                                        <span class="material-icons">send</span>
+                                        <p>No delivery gists found</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+            <div class="pagination-bar">
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn-icon" @click="pageDown" :disabled="page <= 1" title="Previous page">
+                        <span class="material-icons" style="font-size: 18px;">chevron_left</span>
+                    </button>
+                    <span class="text-sm" x-text="`Page ${page} of ${pages}`"></span>
+                    <button class="btn-icon" @click="pageUp" :disabled="page >= pages" title="Next page">
+                        <span class="material-icons" style="font-size: 18px;">chevron_right</span>
+                    </button>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="text-sm" x-text="`${total} total`"></span>
+                    <span class="text-sm">Rows:</span>
+                    <select class="rows-select" x-model.number="pagination" @change="page=1; fetchAll()">
+                        <template x-for="count in [15, 25, 50, 100]">
+                            <option :value="count" x-text="count"></option>
+                        </template>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk replay confirm -->
+    <div class="modal fade" :class="showConfirm ? 'show d-block' : ''" tabindex="-1"
+        style="background: rgba(0,0,0,0.4);" x-show="showConfirm" x-transition.opacity x-cloak>
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 460px;">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-bottom-0 pb-0">
+                    <h5 class="modal-title fw-bold">Confirm bulk replay</h5>
+                    <button type="button" class="btn-close" @click="showConfirm = false"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-1">This will replay <strong x-text="bulkCount"></strong> deliveries, oldest&nbsp;&rarr;&nbsp;newest.</p>
+                    <p class="text-muted-custom text-sm mb-0">Replaying is idempotent &mdash; already-delivered handlers simply receive the event again.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-sm btn-outline-secondary" @click="showConfirm = false">Cancel</button>
+                    <button class="btn btn-sm btn-danger d-inline-flex align-items-center gap-1" @click="runBulk" :disabled="bulkRunning || bulkCount === 0">
+                        <span class="material-icons" style="font-size: 16px;">replay</span>
+                        <span x-text="bulkRunning ? 'Replaying...' : 'Replay now'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gist detail preview -->
+    <div class="modal fade" :class="previewing ? 'show d-block' : ''" tabindex="-1"
+        style="background: rgba(0,0,0,0.4);" x-show="previewing" x-transition.opacity x-cloak>
+        <div class="modal-dialog modal-dialog-centered" style="max-width: 720px;">
+            <div class="modal-content border-0 shadow-lg" x-show="previewing">
+                <div class="modal-header border-bottom-0 pb-0">
+                    <h5 class="modal-title fw-bold">Delivery <span x-text="previewing?.id"></span></h5>
+                    <button type="button" class="btn-close" @click="previewing = null; if(previewIDE){ previewIDE.destroy(); previewIDE = null; }"></button>
+                </div>
+                <div class="modal-body" x-show="previewing">
+                    <div class="d-flex flex-wrap gap-3 mb-3">
+                        <div class="detail-field"><span class="field-label">Status</span>
+                            <span class="badge-status" :class="statusClass(previewing?.status)" x-text="previewing?.status"></span></div>
+                        <div class="detail-field"><span class="field-label">Attempts</span>
+                            <span class="field-value" x-text="`${previewing?.retries} / ${previewing?.max_retries}`"></span></div>
+                        <div class="detail-field"><span class="field-label">Last code</span>
+                            <span class="field-value" x-text="previewing?.last_status_code || '—'"></span></div>
+                        <div class="detail-field"><span class="field-label">Endpoint</span>
+                            <span class="field-value font-mono text-sm" x-text="previewing?.endpoint"></span></div>
+                    </div>
+                    <template x-if="previewing?.last_error">
+                        <div class="alert alert-danger py-2 px-3 text-sm" style="white-space: pre-wrap;" x-text="previewing?.last_error"></div>
+                    </template>
+                    <label class="form-label-sm">Payload</label>
+                    <div id="gist-payload-ide" style="height: 280px; border: 1px solid var(--amebo-border-subtle); border-radius: 8px;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-sm btn-outline-secondary" @click="requeueOne(previewing.id)">Requeue</button>
+                    <button class="btn btn-sm btn-dark d-inline-flex align-items-center gap-1" @click="replayOne(previewing.id)">
+                        <span class="material-icons" style="font-size: 16px;">replay</span> Replay now
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </section>
 {% endblock %}
