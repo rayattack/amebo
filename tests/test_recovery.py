@@ -132,9 +132,10 @@ class RecoveryTestBase:
 
     # ---- seeding -----------------------------------------------------------
 
-    def add_event(self, event, action, payload, ts, deduper=None):
+    def add_event(self, event, action, payload, ts, deduper=None, metadata=None):
+        meta = dumps(metadata).decode() if metadata is not None else '{}'
         self.exec0("INSERT INTO events(event, action, deduper, payload, metadata, timestamped) VALUES (?,?,?,?,?,?)",
-                   event, action, deduper or event, dumps(payload).decode(), '{}', ts)
+                   event, action, deduper or event, dumps(payload).decode(), meta, ts)
 
     def add_subscription(self, sub, action='order.created', max_retries=3, handler=None):
         now = datetime.now().isoformat()
@@ -371,6 +372,24 @@ class SqliteRecoveryTest(RecoveryTestBase, unittest.TestCase):
         _, body = self.call(gists.tabulate, queries={'gist': str(self.pending_id)})
         self.assertEqual(body['data'][0]['status'], 'failed')
         self.assertIsNotNone(body['data'][0]['dead_at'])
+
+    def test_metadata_surfaced_and_workspace_searchable(self):
+        # an event carrying multi-tenant metadata, with a failed gist
+        self.add_subscription('s-meta')
+        now = datetime.now().isoformat()
+        self.add_event('evt-meta', 'order.created', {'id': 7}, now,
+                       metadata={'workspace_id': 'ws-123', 'origin': 'api'})
+        gid = self.add_gist('evt-meta', 's-meta', 0, 3, now)
+        # metadata + derived workspace are surfaced on the gist
+        _, body = self.call(gists.tabulate, queries={'gist': str(gid)})
+        row = body['data'][0]
+        self.assertEqual(row['workspace'], 'ws-123')
+        self.assertEqual(row['metadata'].get('origin'), 'api')
+        # searchable by workspace
+        _, hit = self.call(gists.tabulate, queries={'workspace': 'ws-123'})
+        self.assertIn(str(gid), [r['id'] for r in hit['data']])
+        _, miss = self.call(gists.tabulate, queries={'workspace': 'ws-999'})
+        self.assertNotIn(str(gid), [r['id'] for r in miss['data']])
 
     def test_requeue_clears_dead_at(self):
         self.exec0("UPDATE gists SET dead_at = ? WHERE rowid = ?", datetime.now().isoformat(), self.failed_id)

@@ -169,6 +169,7 @@
                 <thead>
                     <tr>
                         <th>Action</th>
+                        <th>Workspace</th>
                         <th>Publisher &rarr; Subscriber</th>
                         <th>Endpoint</th>
                         <th style="width: 7%">Attempts</th>
@@ -182,6 +183,7 @@
                     <template x-for="g in failures" :key="g.id">
                         <tr>
                             <td><span class="fw-medium" x-text="g.action"></span></td>
+                            <td><span class="tag-id" x-show="g.workspace" x-text="g.workspace" :title="g.workspace"></span><span class="text-muted-custom text-sm" x-show="!g.workspace">—</span></td>
                             <td class="text-sm"><span x-text="g.publisher"></span> &rarr; <span x-text="g.subscriber"></span></td>
                             <td><code class="font-mono text-sm" x-text="g.endpoint" :title="g.endpoint"></code></td>
                             <td class="text-sm" x-text="`${g.retries} / ${g.max_retries}`"></td>
@@ -201,7 +203,7 @@
                         </tr>
                     </template>
                     <template x-if="failures.length === 0 && !loading">
-                        <tr><td colspan="8"><div class="empty-state"><span class="material-icons">check_circle</span><p>No failed deliveries — all healthy</p></div></td></tr>
+                        <tr><td colspan="9"><div class="empty-state"><span class="material-icons">check_circle</span><p>No failed deliveries — all healthy</p></div></td></tr>
                     </template>
                 </tbody>
             </table>

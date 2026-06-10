@@ -79,6 +79,8 @@ def _build_filters(req: Request, engine: str, default_status: str = None):
     _status = (req.queries.get('status') or default_status or '').lower()
     _completed = req.queries.get('completed')
     _timeline = req.queries.get('timeline') or req.queries.get('window')
+    _metadata = req.queries.get('metadata')   # free-text search within event metadata
+    _workspace = req.queries.get('workspace')  # convenience: match metadata.workspace_id
 
     # PG types these columns (rowid int, event/subscription uuid); URL params arrive as
     # text, so cast on PG. SQLite stores them as text/implicit-rowid — no cast.
@@ -95,6 +97,10 @@ def _build_filters(req: Request, engine: str, default_status: str = None):
     if _subscriber: where.add('s.application LIKE {p}', f'%{_subscriber}%')
     if _event: where.add(f'g.event = {{p}}{uc}', _event)
     if _subscription: where.add(f'g.subscription = {{p}}{uc}', _subscription)
+    # Multi-tenant: metadata is JSON text on events — LIKE-match it. `workspace` is the
+    # common case (metadata carries workspace_id), `metadata` is free-text across it all.
+    if _metadata: where.add('e.metadata LIKE {p}', f'%{_metadata}%')
+    if _workspace: where.add('e.metadata LIKE {p}', f'%{_workspace}%')
 
     if _status in STATUS_PREDICATES:
         where.raw(STATUS_PREDICATES[_status])
@@ -150,7 +156,7 @@ async def tabulate(req: Request, res: Response, ctx: Context):
             g.last_status_code AS last_status_code, g.last_error AS last_error,
             g.last_attempted_at AS last_attempted_at, g.sleep_until AS sleep_until,
             g.dead_at AS dead_at, g.timestamped AS timestamped, e.payload AS payload,
-            {status_expr('g', 's')} AS status
+            e.metadata AS metadata, {status_expr('g', 's')} AS status
         {frm}
         {clause}
         ORDER BY g.timestamped DESC, g.rowid DESC
@@ -175,28 +181,37 @@ async def tabulate(req: Request, res: Response, ctx: Context):
         except Exception: data = None
         return data
 
-    data = [{
-        'id': str(id),
-        'gist': str(id),  # back-compat: UI keyed on `gist`
-        'event': str(event),
-        'action': action,
-        'publisher': publisher,
-        'subscriber': subscriber,
-        'endpoint': endpoint,
-        'max_retries': max_retries,
-        'completed': bool(completed),
-        'retries': retries,
-        'last_status_code': last_status_code,
-        'last_error': last_error,
-        'last_attempted_at': last_attempted_at,
-        'sleep_until': sleep_until,
-        'dead_at': dead_at,
-        'timestamped': timestamped,
-        'status': status,
-        'payload': preview(action, payload),
-    } for (id, event, action, publisher, subscriber, endpoint, max_retries, completed,
-           retries, last_status_code, last_error, last_attempted_at, sleep_until,
-           dead_at, timestamped, payload, status) in rows]
+    def meta(metadata):
+        try: return loads(metadata) if metadata else {}
+        except Exception: return {}
+
+    data = []
+    for (id, event, action, publisher, subscriber, endpoint, max_retries, completed,
+         retries, last_status_code, last_error, last_attempted_at, sleep_until,
+         dead_at, timestamped, payload, metadata, status) in rows:
+        md = meta(metadata)
+        data.append({
+            'id': str(id),
+            'gist': str(id),  # back-compat: UI keyed on `gist`
+            'event': str(event),
+            'action': action,
+            'publisher': publisher,
+            'subscriber': subscriber,
+            'endpoint': endpoint,
+            'max_retries': max_retries,
+            'completed': bool(completed),
+            'retries': retries,
+            'last_status_code': last_status_code,
+            'last_error': last_error,
+            'last_attempted_at': last_attempted_at,
+            'sleep_until': sleep_until,
+            'dead_at': dead_at,
+            'timestamped': timestamped,
+            'status': status,
+            'payload': preview(action, payload),
+            'metadata': md,
+            'workspace': md.get('workspace_id') if isinstance(md, dict) else None,
+        })
 
     res.status = HTTPStatus.OK
     res.body = {

@@ -45,7 +45,7 @@ def get_timeline(timeline, step_or_filter, column: str = None):
     return ''
 
 
-MAX_ERROR_LENGTH = 500
+MAX_ERROR_LENGTH = 2000
 
 # Canonical delivery-status vocabulary. "failed" == exhausted / dead-lettered.
 DELIVERY_STATUSES = ('pending', 'retrying', 'delivered', 'failed')

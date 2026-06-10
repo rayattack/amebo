@@ -20,6 +20,7 @@
     destinationSearch: '',
     eventSearch: '',
     actionSearch: '',
+    workspaceSearch: '',
     statusFilter: '',
     whenFilter: '',
 
@@ -36,6 +37,7 @@
         if(this.destinationSearch) q += `&destination=${encodeURIComponent(this.destinationSearch)}`;
         if(this.eventSearch) q += `&event=${encodeURIComponent(this.eventSearch)}`;
         if(this.actionSearch) q += `&action=${encodeURIComponent(this.actionSearch)}`;
+        if(this.workspaceSearch) q += `&workspace=${encodeURIComponent(this.workspaceSearch)}`;
         if(this.statusFilter) q += `&status=${this.statusFilter}`;
         if(this.whenFilter) q += `&timeline=${this.whenFilter}`;
         return q;
@@ -48,6 +50,7 @@
         if(this.destinationSearch) q += `&destination=${encodeURIComponent(this.destinationSearch)}`;
         if(this.eventSearch) q += `&event=${encodeURIComponent(this.eventSearch)}`;
         if(this.actionSearch) q += `&action=${encodeURIComponent(this.actionSearch)}`;
+        if(this.workspaceSearch) q += `&workspace=${encodeURIComponent(this.workspaceSearch)}`;
         if(this.statusFilter) q += `&status=${this.statusFilter}`;
         if(this.whenFilter) q += `&timeline=${this.whenFilter}`;
         return q;
@@ -75,7 +78,8 @@
     applyFilters(){ this.page = 1; this.isFiltering = true; this.fetchAll(); },
     clearFilters(){
         this.gistSearch=''; this.originSearch=''; this.destinationSearch='';
-        this.eventSearch=''; this.actionSearch=''; this.statusFilter=''; this.whenFilter='';
+        this.eventSearch=''; this.actionSearch=''; this.workspaceSearch='';
+        this.statusFilter=''; this.whenFilter='';
         this.isFiltering = false; this.page = 1; this.fetchAll();
     },
 
@@ -198,6 +202,11 @@
                 <span class="material-icons">download</span>
                 <input class="form-control" type="text" placeholder="Subscriber..." x-model="destinationSearch" style="width: 150px;">
             </div>
+            <div class="input-icon">
+                <span class="material-icons">corporate_fare</span>
+                <input class="form-control" type="text" placeholder="Workspace / metadata..." x-model="workspaceSearch"
+                    @keyup.enter="applyFilters" style="width: 180px;" title="Search by workspace_id or anything in event metadata">
+            </div>
             <select class="form-select" x-model="statusFilter" style="width: 140px;">
                 <option value="">All Status</option>
                 <option value="pending">Pending</option>
@@ -238,6 +247,7 @@
                             <th style="width: 5%">ID</th>
                             <th style="width: 9%">Status</th>
                             <th>Action</th>
+                            <th>Workspace</th>
                             <th>Publisher &rarr; Subscriber</th>
                             <th>Endpoint</th>
                             <th style="width: 7%">Attempts</th>
@@ -255,6 +265,10 @@
                                     <span class="badge-status" :class="statusClass(gist.status)" x-text="gist.status"></span>
                                 </td>
                                 <td @click="openPreview(gist)"><span class="fw-medium" x-text="gist.action"></span></td>
+                                <td @click="openPreview(gist)">
+                                    <span class="tag-id" x-show="gist.workspace" x-text="gist.workspace" :title="gist.workspace"></span>
+                                    <span class="text-muted-custom text-sm" x-show="!gist.workspace">—</span>
+                                </td>
                                 <td @click="openPreview(gist)">
                                     <span class="text-sm" x-text="gist.publisher"></span>
                                     <span class="text-muted-custom"> &rarr; </span>
@@ -289,7 +303,7 @@
                         </template>
                         <template x-if="gists.length === 0 && !loading">
                             <tr>
-                                <td colspan="10">
+                                <td colspan="11">
                                     <div class="empty-state">
                                         <span class="material-icons">send</span>
                                         <p>No delivery gists found</p>
@@ -368,6 +382,10 @@
                             <span class="field-value" x-text="previewing?.last_status_code || '—'"></span></div>
                         <div class="detail-field"><span class="field-label">Endpoint</span>
                             <span class="field-value font-mono text-sm" x-text="previewing?.endpoint"></span></div>
+                        <template x-if="previewing?.workspace">
+                            <div class="detail-field"><span class="field-label">Workspace</span>
+                                <span class="field-value"><span class="tag-id" x-text="previewing?.workspace"></span></span></div>
+                        </template>
                         <template x-if="previewing?.status === 'retrying' && previewing?.sleep_until">
                             <div class="detail-field"><span class="field-label">Next retry</span>
                                 <span class="field-value text-sm" x-text="new Date(String(previewing.sleep_until).replace(' ', 'T')).toLocaleString()"></span></div>
@@ -379,7 +397,16 @@
                         </template>
                     </div>
                     <template x-if="previewing?.last_error">
-                        <div class="alert alert-danger py-2 px-3 text-sm" style="white-space: pre-wrap;" x-text="previewing?.last_error"></div>
+                        <div>
+                            <label class="form-label-sm" x-text="`Response${previewing?.last_status_code ? ' · HTTP '+previewing.last_status_code : ''}`"></label>
+                            <div class="alert alert-danger py-2 px-3 text-sm" style="white-space: pre-wrap; max-height: 200px; overflow: auto;" x-text="previewing?.last_error"></div>
+                        </div>
+                    </template>
+                    <template x-if="previewing?.metadata && Object.keys(previewing.metadata).length">
+                        <div>
+                            <label class="form-label-sm">Metadata</label>
+                            <pre class="font-mono text-sm" style="background: var(--amebo-bg-subtle); border: 1px solid var(--amebo-border-subtle); border-radius: 8px; padding: 10px; max-height: 160px; overflow: auto; margin-bottom: 0.75rem;" x-text="prettyJson(previewing.metadata)"></pre>
+                        </div>
                     </template>
                     <label class="form-label-sm">Payload</label>
                     <div id="gist-payload-ide" style="height: 280px; border: 1px solid var(--amebo-border-subtle); border-radius: 8px;"></div>
