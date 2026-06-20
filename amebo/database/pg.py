@@ -21,9 +21,14 @@ SET search_path TO _amebo_;
 
     CREATE TABLE IF NOT EXISTS _amebo_.actions (
         rowid integer unique generated always as identity,
-        action text primary key,  -- i.e. v1.customers.created
+        action text primary key,  -- i.e. customers.v1.created
         application text NOT NULL REFERENCES applications(application),
         schemata text NOT NULL,
+        family text,  -- action name minus its version token; groups versions
+        status text NOT NULL DEFAULT 'active',  -- active | deprecated | retired
+        successor text,  -- action that replaces this one (advisory pointer, not a FK)
+        compatibility text NOT NULL DEFAULT 'BACKWARD',  -- NONE | BACKWARD | FORWARD | FULL
+        schema_hash text,  -- fingerprint for idempotent re-registration
         timestamped text NOT NULL
     );
 
@@ -47,10 +52,12 @@ SET search_path TO _amebo_;
         max_retries integer not null default 3,
         handler text NOT NULL,
         description text,
+        active integer NOT NULL DEFAULT 1,  -- soft-unsubscribe flag
         timestamped text NOT NULL,
 
         UNIQUE(application, action, handler)
     );
+    -- subscriptions store no version: subscribing to customers.v2.created IS pinning to v2
 
     CREATE TABLE IF NOT EXISTS _amebo_.gists (
         rowid integer unique generated always as identity,
@@ -78,6 +85,17 @@ SET search_path TO _amebo_;
     -- migrations for existing databases
     ALTER TABLE _amebo_.applications ADD COLUMN IF NOT EXISTS apikey text;
     ALTER TABLE _amebo_.applications ADD COLUMN IF NOT EXISTS active integer NOT NULL DEFAULT 1;
+
+    -- action version registry (families, lifecycle, immutable-schema fingerprint)
+    ALTER TABLE _amebo_.actions ADD COLUMN IF NOT EXISTS family text;
+    ALTER TABLE _amebo_.actions ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'active';
+    ALTER TABLE _amebo_.actions ADD COLUMN IF NOT EXISTS successor text;
+    ALTER TABLE _amebo_.actions ADD COLUMN IF NOT EXISTS compatibility text NOT NULL DEFAULT 'BACKWARD';
+    ALTER TABLE _amebo_.actions ADD COLUMN IF NOT EXISTS schema_hash text;
+    CREATE INDEX IF NOT EXISTS actions_family_idx ON _amebo_.actions(family);
+
+    -- soft-unsubscribe: a deactivated subscription stops fan-out and delivery, keeps history
+    ALTER TABLE _amebo_.subscriptions ADD COLUMN IF NOT EXISTS active integer NOT NULL DEFAULT 1;
 
     -- delivery-result tracking on gists (P0: make failures visible)
     ALTER TABLE _amebo_.gists ADD COLUMN IF NOT EXISTS last_status_code integer;

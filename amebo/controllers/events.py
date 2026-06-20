@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
 from http import HTTPStatus
-from sqlite3 import Connection
+from sqlite3 import Connection, IntegrityError
 from uuid import uuid4
 
+from asyncpg import UniqueViolationError
 from fastjsonschema import JsonSchemaException
 from heaven import Context, Request, Response
 from orjson import dumps, loads
@@ -74,7 +75,7 @@ async def insert(req: Request, res: Response, ctx: Context):
         executor = ctx.executor
         sqls = f'''
             SELECT
-                schemata, actions.application, app.secret
+                schemata, actions.application, app.secret, actions.status, actions.successor
             FROM
                 {executor.schema}actions
             JOIN {executor.schema}applications app ON app.application = actions.application
@@ -85,9 +86,17 @@ async def insert(req: Request, res: Response, ctx: Context):
         if not row:
             return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, {'error': 'Action can not be used to process any events'})
 
-        schemata, application, app_secret = row
+        schemata, application, app_secret, status, successor = row
         if not datachecker(loads(req.body), req.headers.get('x-amebo-signature'), app_secret):
             return res.out(HTTPStatus.UNAUTHORIZED, 'Invalid signature')
+
+        # retired actions accept no new events (history + in-flight gists are untouched);
+        # deprecated ones still flow but the response nudges producers toward the successor.
+        if status == 'retired':
+            return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, {
+                'error': f'Action {event.action} is retired and no longer accepts events',
+                'successor': successor,
+            })
 
         # compile the json schema with LRU cache (bounded to 1024 entries)
         # AND validate event payload to ensure we are only sending valid contractual payload
@@ -120,7 +129,7 @@ async def insert(req: Request, res: Response, ctx: Context):
                 {executor.schema}gists(event, subscription, completed, retries, sleep_until, timestamped)
             SELECT
                 '{identifier}', subscription, 0, 0, '{sleep_until.isoformat()}', '{event.timestamped.isoformat()}'
-            FROM {executor.schema}subscriptions WHERE action = {steps.reset.next()}
+            FROM {executor.schema}subscriptions WHERE action = {steps.reset.next()} AND active <> 0
         '''
         await executor.fetch(0).execute(sqls, event.action)
 
@@ -131,6 +140,29 @@ async def insert(req: Request, res: Response, ctx: Context):
         return res.out(HTTPStatus.NOT_ACCEPTABLE, {'error': f'Event payload does not conform to {event.action} schema'})
     except ModuleNotFoundError as exc:
         return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
+    except (UniqueViolationError, IntegrityError):
+        # Idempotent publish. The UNIQUE(deduper, payload) guard means this exact event was
+        # already accepted: its row and gists already exist, and the INSERT above failed before
+        # any new gist was created — so nothing is re-delivered. Re-publishing a deduped event is
+        # expected (e.g. a producer retrying), so return the existing event with 200 OK rather
+        # than 409/500. Publishers treat any non-2xx as a failed emit, so a duplicate must read
+        # as success.
+        sqls = f'''
+            SELECT event, rowid FROM {executor.schema}events
+            WHERE deduper = {steps.reset.next()} AND payload = {steps.next()}
+        '''
+        existing = await executor.fetch(1).execute(sqls, event.deduper, dumps(event.payload).decode())
+        redacted_paths = await fetch_redacted_paths(executor, event.action)
+        return res.out(HTTPStatus.OK, {
+            'event': existing[0] if existing else identifier,
+            'row_id': existing[1] if existing else None,
+            'payload': redact_payload(redacted_paths, event.payload),
+            'metadata': event.metadata,
+            'action': event.action,
+            'deduper': event.deduper,
+            'timestamped': event.timestamped,
+            'duplicate': True,
+        })
 
     redacted_paths = await fetch_redacted_paths(executor, event.action)
     res.status = HTTPStatus.CREATED
@@ -144,3 +176,7 @@ async def insert(req: Request, res: Response, ctx: Context):
         'deduper': event.deduper,
         'timestamped': event.timestamped
     }
+    if status == 'deprecated':
+        res.body['deprecated'] = True
+        res.body['successor'] = successor
+        res.headers = 'Warning', f'299 - "action {event.action} is deprecated; use {successor or "its successor"}"'

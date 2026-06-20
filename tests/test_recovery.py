@@ -11,15 +11,18 @@ import os
 import unittest
 from asyncio import new_event_loop, set_event_loop
 from datetime import datetime, timedelta
+from http import HTTPStatus
 from sqlite3 import Connection
 
 import jwt
 from orjson import dumps, loads
 
+import amebo.controllers.events as events
 import amebo.controllers.gists as gists
 import amebo.controllers.metrics as metrics
 from amebo.constants.scripts import initdbscript
 from amebo.decorators.providers import Executor
+from amebo.utils.helpers import datasigner
 
 
 SECRET = 'unit-test-secret'
@@ -194,6 +197,45 @@ class SqliteRecoveryTest(RecoveryTestBase, unittest.TestCase):
         if isinstance(body_out, (bytes, bytearray)):
             body_out = loads(body_out)
         return res.status, body_out
+
+    # -- events.insert idempotency --
+
+    def _publish(self, body):
+        raw = dumps(body)
+        sig = datasigner(loads(raw), 'pubsecret')  # 'order.created' belongs to app 'pub'
+        req = FakeReq(self.app, headers={'content-type': 'application/json',
+                                         'x-amebo-signature': sig}, body=raw)
+        res = FakeRes(); ctx = FakeCtx(self.app)
+        self.run_async(events.insert(req, res, ctx))
+        out = res.body
+        if isinstance(out, (bytes, bytearray)): out = loads(out)
+        return res.status, out
+
+    def _gists_for(self, deduper):
+        return self.one("SELECT count(*) FROM gists g JOIN events e ON e.event = g.event "
+                        "WHERE e.deduper = ?", deduper)[0]
+
+    def test_duplicate_publish_is_idempotent(self):
+        body = {'action': 'order.created', 'deduper': 'recv:alice:t1',
+                'payload': {'id': 99}, 'metadata': {}, 'sleep_until': 0,
+                'timestamped': datetime.now().isoformat()}
+
+        s1, b1 = self._publish(body)
+        self.assertEqual(s1, HTTPStatus.CREATED)
+        events_before = self.one("SELECT count(*) FROM events WHERE deduper = ?", 'recv:alice:t1')[0]
+        gists_before = self._gists_for('recv:alice:t1')
+        self.assertEqual(events_before, 1)
+
+        # Re-publishing the identical (deduper, payload) must read as success, not 409/500.
+        s2, b2 = self._publish(body)
+        self.assertEqual(s2, HTTPStatus.OK)
+        self.assertTrue(b2.get('duplicate'))
+        self.assertEqual(b2.get('event'), b1.get('event'))  # echoes the existing event id
+
+        # No second event row, and crucially no new gists — nothing is re-delivered.
+        self.assertEqual(self.one("SELECT count(*) FROM events WHERE deduper = ?", 'recv:alice:t1')[0],
+                         events_before)
+        self.assertEqual(self._gists_for('recv:alice:t1'), gists_before)
 
     # -- tests --
 

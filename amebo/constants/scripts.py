@@ -21,6 +21,11 @@ BEGIN;
         action text primary key,
         application text NOT NULL REFERENCES applications(application),
         schemata text NOT NULL,
+        family text,
+        status text NOT NULL DEFAULT 'active',
+        successor text,
+        compatibility text NOT NULL DEFAULT 'BACKWARD',
+        schema_hash text,
         timestamped text NOT NULL
     );
 
@@ -42,6 +47,7 @@ BEGIN;
         max_retries integer not null default 3,
         handler text NOT NULL,
         description text,
+        active integer NOT NULL DEFAULT 1,
         timestamped text NOT NULL,
 
         UNIQUE(application, action, handler)

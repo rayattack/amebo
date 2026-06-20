@@ -85,6 +85,7 @@ async def aproko(router: Router):
                         FROM {x}gists AS g
                         JOIN {x}subscriptions s ON s.subscription = g.subscription
                         WHERE g.completed <> 1
+                        AND s.active <> 0
                         AND g.retries < s.max_retries
                         AND g.dead_at IS NULL
                         AND (g.sleep_until IS NULL OR g.sleep_until < $1::timestamp)
@@ -127,6 +128,7 @@ async def aproko(router: Router):
                     JOIN {x}applications a ON
                         s.application = a.application
                     WHERE g.completed <> 1
+                    AND s.active <> 0
                     AND g.retries < s.max_retries
                     AND g.dead_at IS NULL
                     AND (g.sleep_until IS NULL OR g.sleep_until < '{now_iso}')

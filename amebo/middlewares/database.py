@@ -9,9 +9,11 @@ from asyncpg import connect as pg_connect, create_pool
 
 from amebo.constants.literals import AMEBO_SECRET, DB
 from amebo.constants.scripts import initdbscript
+from amebo.decorators.providers import Executor
 from amebo.utils.structs import Lookup
 from amebo.database.pg import pgscript
 from amebo.utils.helpers import deterministic_uuid
+from amebo.utils.versioning import parse_action, schema_fingerprint
 
 logger = logging.getLogger('amebo.database')
 
@@ -65,9 +67,42 @@ async def initialize(app: Application):
             'ALTER TABLE gists ADD COLUMN last_attempted_at text',
             # first-class dead-letter marker (P2): set when a gist exhausts its retries
             'ALTER TABLE gists ADD COLUMN dead_at text',
+            # action version registry (families, lifecycle, immutable-schema fingerprint)
+            'ALTER TABLE actions ADD COLUMN family text',
+            "ALTER TABLE actions ADD COLUMN status text NOT NULL DEFAULT 'active'",
+            'ALTER TABLE actions ADD COLUMN successor text',
+            "ALTER TABLE actions ADD COLUMN compatibility text NOT NULL DEFAULT 'BACKWARD'",
+            'ALTER TABLE actions ADD COLUMN schema_hash text',
+            # soft-unsubscribe: deactivated subscriptions stop fan-out and delivery
+            'ALTER TABLE subscriptions ADD COLUMN active integer NOT NULL DEFAULT 1',
         ]:
             try: db.execute(alter)
             except Exception: pass  # column already exists
+
+
+async def backfill_versioning(app: Application):
+    """Populate `family` and `schema_hash` for actions registered before the version
+    registry existed. Idempotent: only touches rows still missing those values, so it
+    is safe to run on every boot. New rows are populated at registration time."""
+    executor = Executor(app)
+    if executor.db is None:
+        return
+    x = executor.schema
+    try:
+        rows = await executor.fetch(2).execute(
+            f'SELECT action, schemata FROM {x}actions WHERE family IS NULL OR schema_hash IS NULL')
+    except Exception as exc:
+        logger.error('Versioning backfill skipped: %s', exc)
+        return
+
+    for action, schemata in (rows or []):
+        family = parse_action(action)['family']
+        try: fingerprint = schema_fingerprint(schemata)
+        except Exception: fingerprint = None
+        sqls = (f'UPDATE {x}actions SET family = {executor.esc(1)}, schema_hash = {executor.esc(2)} '
+                f'WHERE action = {executor.esc(3)}')
+        try: await executor.fetch(0).execute(sqls, family, fingerprint, action)
+        except Exception as exc: logger.error('Could not backfill action %s: %s', action, exc)
 
 
 async def setup_listener(app: Application):

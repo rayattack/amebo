@@ -24,6 +24,15 @@ class Subscriptions(Model):
         return val
 
 
+class SubscriptionMigration(Model):
+    """POST /v1/subscriptions/migrations body. Clones active subscriptions from one
+    action onto another (typically v1 -> v2). `to_action` defaults to from_action's
+    successor when omitted."""
+    from_action: str
+    to_action: Optional[str] = None
+    deactivate_source: Optional[bool] = False
+
+
 class Gists(Model):
     attempts: int = 0
     action: Action
