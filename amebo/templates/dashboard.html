@@ -31,6 +31,7 @@
     metrics: { published: 0, delivered: 0, retrying: 0, pending: 0, failed: 0, total: 0, success_rate: null },
     failures: [],
     subs: [],
+    versions: { total_families: 0, total_actions: 0, by_status: { active: 0, deprecated: 0, retired: 0 }, subscriptions_on_deprecated: 0, at_risk: [] },
     loading: false,
     busy: null,
 
@@ -49,7 +50,7 @@
 
     init(){ this.refresh(); },
 
-    refresh(){ this.loadMetrics(); this.loadFailures(); this.loadSubs(); },
+    refresh(){ this.loadMetrics(); this.loadFailures(); this.loadSubs(); this.loadVersions(); },
 
     loadMetrics(){
         fetch(`/v1/metrics/deliveries?window=${this.window}`, { credentials: 'include' })
@@ -70,6 +71,13 @@
         fetch('/v1/metrics/subscriptions', { credentials: 'include' })
             .then(r => r.json())
             .then(data => { this.subs = data.data || []; this.renderCharts(); })
+            .catch(() => {});
+    },
+
+    loadVersions(){
+        fetch('/v1/metrics/versions', { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => { this.versions = data; })
             .catch(() => {});
     },
 
@@ -275,6 +283,84 @@
                 <div class="detail-panel p-3 h-100">
                     <span class="field-label">Success rate</span>
                     <div class="fw-bold" style="font-size: 1.6rem;" x-text="fmtRate()"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Versioning / migration debt -->
+        <div class="row g-3 mb-4">
+            <div class="col">
+                <div class="detail-panel p-3 h-100">
+                    <span class="field-label">Action families</span>
+                    <div class="fw-bold" style="font-size: 1.6rem;" x-text="versions.total_families"></div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="detail-panel p-3 h-100">
+                    <span class="field-label">Active</span>
+                    <div class="fw-bold" style="font-size: 1.6rem; color: var(--amebo-success);" x-text="versions.by_status.active"></div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="detail-panel p-3 h-100">
+                    <span class="field-label">Deprecated</span>
+                    <div class="fw-bold" style="font-size: 1.6rem; color: var(--amebo-warning);" x-text="versions.by_status.deprecated"></div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="detail-panel p-3 h-100">
+                    <span class="field-label">Retired</span>
+                    <div class="fw-bold" style="font-size: 1.6rem;" x-text="versions.by_status.retired"></div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="detail-panel p-3 h-100">
+                    <span class="field-label">Subs on deprecated/retired</span>
+                    <div class="fw-bold" style="font-size: 1.6rem;"
+                        :style="versions.subscriptions_on_deprecated > 0 ? 'color: var(--amebo-danger);' : ''"
+                        x-text="versions.subscriptions_on_deprecated"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Migration debt: deprecated/retired actions that still have active subscribers -->
+        <div class="row g-3 mb-4" x-show="versions.at_risk && versions.at_risk.length > 0" x-transition.opacity>
+            <div class="col-12">
+                <div class="detail-panel p-3">
+                    <h6 class="fw-bold mb-2">Migration debt
+                        <span class="text-muted-custom text-sm">— deprecated/retired actions with active subscribers</span>
+                    </h6>
+                    <div class="data-table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Action</th>
+                                    <th>Family</th>
+                                    <th style="width: 10%">Status</th>
+                                    <th>Successor</th>
+                                    <th style="width: 12%">Subscribers</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="a in versions.at_risk" :key="a.action">
+                                    <tr>
+                                        <td><span class="fw-medium" x-text="a.action"></span></td>
+                                        <td><span class="text-muted-custom text-sm font-mono" x-text="a.family || '—'"></span></td>
+                                        <td>
+                                            <span class="badge text-capitalize"
+                                                :class="{
+                                                    'bg-warning bg-opacity-10 text-warning': a.status === 'deprecated',
+                                                    'bg-danger bg-opacity-10 text-danger': a.status === 'retired'
+                                                }"
+                                                x-text="a.status"></span>
+                                        </td>
+                                        <td><span class="font-mono text-sm" x-text="a.successor || '—'"></span></td>
+                                        <td><span class="fw-bold" x-text="a.subscribers"></span></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>

@@ -117,3 +117,56 @@ async def subscriptions(req: Request, res: Response, ctx: Context):
         })
 
     return res.out(HTTPStatus.OK, {'data': data})
+
+
+@jsonify
+@contextualize
+async def versions(req: Request, res: Response, ctx: Context):
+    """Versioning / migration-debt analytics: action-family count, lifecycle
+    status breakdown, and the active subscriptions still pinned to deprecated
+    or retired actions (the work left to migrate consumers off old versions)."""
+    executor = ctx.executor
+    x = executor.schema
+
+    status_sql = f'SELECT status, COUNT(*) FROM {x}actions GROUP BY status;'
+    families_sql = f'SELECT COUNT(DISTINCT family) FROM {x}actions;'
+    dep_subs_sql = (
+        f'SELECT COUNT(*) FROM {x}subscriptions s '
+        f'JOIN {x}actions a ON s.action = a.action '
+        f"WHERE a.status IN ('deprecated', 'retired') AND s.active <> 0;"
+    )
+    # deprecated/retired actions that still have active subscribers -> migration debt
+    at_risk_sql = f'''
+        SELECT a.action, a.family, a.status, a.successor,
+            (SELECT COUNT(*) FROM {x}subscriptions s WHERE s.action = a.action AND s.active <> 0) AS subscribers
+        FROM {x}actions a
+        WHERE a.status IN ('deprecated', 'retired')
+        ORDER BY subscribers DESC, a.action ASC;
+    '''
+    try:
+        srows = await executor.fetch(2).execute(status_sql)
+        frow = await executor.fetch(1).execute(families_sql)
+        drow = await executor.fetch(1).execute(dep_subs_sql)
+        arows = await executor.fetch(2).execute(at_risk_sql)
+    except Exception as exc:
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+
+    by_status = {'active': 0, 'deprecated': 0, 'retired': 0}
+    for status, count in (srows or []):
+        by_status[status or 'active'] = int(count or 0)
+
+    at_risk = [{
+        'action': action,
+        'family': family,
+        'status': status,
+        'successor': successor,
+        'subscribers': int(subscribers or 0),
+    } for action, family, status, successor, subscribers in (arows or [])]
+
+    return res.out(HTTPStatus.OK, {
+        'total_families': int(frow[0]) if frow and frow[0] is not None else 0,
+        'total_actions': sum(by_status.values()),
+        'by_status': by_status,
+        'subscriptions_on_deprecated': int(drow[0]) if drow and drow[0] is not None else 0,
+        'at_risk': at_risk,
+    })

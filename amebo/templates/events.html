@@ -176,10 +176,12 @@
                         <thead>
                             <tr>
                                 <th style="width: 12%">Event ID</th>
-                                <th style="width: 25%">Action Type</th>
-                                <th style="width: 15%">Deduper</th>
+                                <th style="width: 22%">Action Type</th>
+                                <th style="width: 14%">Family</th>
+                                <th style="width: 7%">Version</th>
+                                <th style="width: 13%">Deduper</th>
                                 <th>Payload</th>
-                                <th style="width: 20%">Timestamp</th>
+                                <th style="width: 16%">Timestamp</th>
                             </tr>
                         </thead>
                         <tbody @refresher.window="refreshPage">
@@ -190,6 +192,14 @@
                                     </td>
                                     <td>
                                         <span class="fw-medium" x-text="event.action"></span>
+                                    </td>
+                                    <td>
+                                        <span class="text-muted-custom text-sm font-mono" x-text="event.family || '—'"></span>
+                                    </td>
+                                    <td>
+                                        <span class="badge"
+                                            :class="event.version ? 'bg-primary bg-opacity-10 text-primary' : 'bg-secondary bg-opacity-10 text-secondary'"
+                                            x-text="event.version || 'base'"></span>
                                     </td>
                                     <td>
                                         <span class="font-mono text-sm text-muted-custom"
@@ -209,7 +219,7 @@
                             </template>
                             <template x-if="events.length === 0 && !loading">
                                 <tr>
-                                    <td colspan="5">
+                                    <td colspan="7">
                                         <div class="empty-state">
                                             <span class="material-icons">inbox</span>
                                             <p>No events found</p>

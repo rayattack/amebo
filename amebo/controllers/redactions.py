@@ -12,6 +12,7 @@ from amebo.decorators.providers import contextualize, expects
 from amebo.models.redactions import Redaction
 from amebo.utils.helpers import get_pagination, get_timeline, datachecker
 from amebo.utils.structs import Steps
+from amebo.utils.versioning import parse_action
 
 
 async def fetch_redacted_paths(executor, action):
@@ -70,7 +71,9 @@ async def tabulate(req: Request, res: Response, ctx: Context):
         'id': id,
         'action': action,
         'field_path': field_path,
-        'timestamped': timestamped
+        'timestamped': timestamped,
+        'family': parse_action(action)['family'],
+        'version': parse_action(action)['version']
     } for id, action, field_path, timestamped in rows]
 
 

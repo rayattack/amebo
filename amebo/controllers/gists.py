@@ -16,6 +16,7 @@ from amebo.utils.helpers import (
     backoff_seconds, DELIVERY_STATUSES,
 )
 from amebo.utils.structs import Steps
+from amebo.utils.versioning import parse_action
 from amebo.models.gists import Ack
 from amebo.controllers.redactions import fetch_redacted_paths
 
@@ -208,6 +209,8 @@ async def tabulate(req: Request, res: Response, ctx: Context):
             'dead_at': dead_at,
             'timestamped': timestamped,
             'status': status,
+            'family': parse_action(action)['family'],
+            'version': parse_action(action)['version'],
             'payload': preview(action, payload),
             'metadata': md,
             'workspace': md.get('workspace_id') if isinstance(md, dict) else None,

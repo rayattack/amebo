@@ -107,6 +107,7 @@
                             <tr>
                                 <th style="width: 8%">ID</th>
                                 <th style="width: 25%">Action</th>
+                                <th style="width: 7%">Version</th>
                                 <th>Field Path</th>
                                 <th style="width: 20%">Timestamp</th>
                                 <th style="width: 8%"></th>
@@ -120,6 +121,11 @@
                                     </td>
                                     <td>
                                         <span class="fw-medium" x-text="r.action"></span>
+                                    </td>
+                                    <td>
+                                        <span class="badge"
+                                            :class="r.version ? 'bg-primary bg-opacity-10 text-primary' : 'bg-secondary bg-opacity-10 text-secondary'"
+                                            x-text="r.version || 'base'"></span>
                                     </td>
                                     <td>
                                         <code class="font-mono text-sm" x-text="r.field_path"></code>
@@ -137,7 +143,7 @@
                             </template>
                             <template x-if="redactions.length === 0 && !loading">
                                 <tr>
-                                    <td colspan="5">
+                                    <td colspan="6">
                                         <div class="empty-state">
                                             <span class="material-icons">visibility_off</span>
                                             <p>No redactions defined</p>

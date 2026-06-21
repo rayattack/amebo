@@ -7,6 +7,7 @@
 {
     isFilterable: false,
     actionSearch: '',
+    familySearch: '',
     applicationSearch: '',
     schemataSearch: '',
     whenFilter: '',
@@ -14,6 +15,7 @@
     filterResults(){
         let base = `/v1/actions?pagination=${this.pagination}&page=1`
         if(this.actionSearch) base += `&action=${this.actionSearch}`
+        if(this.familySearch) base += `&family=${this.familySearch}`
         if(this.applicationSearch) base += `&application=${this.applicationSearch}`
         if(this.schemataSearch) base += `&schemata=${this.schemataSearch}`
         if(this.whenFilter) base += `&timeline=${this.whenFilter}`
@@ -27,6 +29,7 @@
 
     clearFilter(){
         this.actionSearch = '';
+        this.familySearch = '';
         this.applicationSearch = '';
         this.schemataSearch = '';
         this.whenFilter = '';
@@ -37,6 +40,7 @@
     checkDirty(){
         this.isFilterable = (
             this.actionSearch !== '' ||
+            this.familySearch !== '' ||
             this.applicationSearch !== '' ||
             this.schemataSearch !== '' ||
             this.whenFilter !== ''
@@ -89,6 +93,16 @@
                     <h1 class="page-title mb-0" x-text="previewing.action"></h1>
                     <span class="badge bg-secondary bg-opacity-10 text-secondary"
                         x-text="previewing.application"></span>
+                    <span class="badge"
+                        :class="previewing.version ? 'bg-primary bg-opacity-10 text-primary' : 'bg-secondary bg-opacity-10 text-secondary'"
+                        x-text="previewing.version || 'base'"></span>
+                    <span class="badge text-capitalize"
+                        :class="{
+                            'bg-success bg-opacity-10 text-success': previewing.status === 'active',
+                            'bg-warning bg-opacity-10 text-warning': previewing.status === 'deprecated',
+                            'bg-secondary bg-opacity-10 text-secondary': previewing.status === 'retired' || !previewing.status
+                        }"
+                        x-text="previewing.status || '—'"></span>
                     <template x-if="isAdmin">
                         <button class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1 ms-auto"
                             @click="deleteAction" :disabled="deleting">
@@ -110,6 +124,26 @@
                         <div class="detail-field">
                             <span class="field-label">Application</span>
                             <span class="field-value" x-text="previewing.application"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Family</span>
+                            <span class="field-value font-mono" x-text="previewing.family || '—'"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Version</span>
+                            <span class="field-value" x-text="previewing.version || 'base (unversioned)'"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Status</span>
+                            <span class="field-value text-capitalize" x-text="previewing.status || '—'"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Compatibility</span>
+                            <span class="field-value" x-text="previewing.compatibility || '—'"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Successor</span>
+                            <span class="field-value font-mono" x-text="previewing.successor || '—'"></span>
                         </div>
                         <div class="detail-field">
                             <span class="field-label">Created</span>
@@ -191,6 +225,11 @@
                             style="width: 180px;">
                     </div>
                     <div class="input-icon">
+                        <span class="material-icons">account_tree</span>
+                        <input class="form-control" type="text" placeholder="Family..." x-model="familySearch"
+                            style="width: 170px;">
+                    </div>
+                    <div class="input-icon">
                         <span class="material-icons">layers</span>
                         <input class="form-control" type="text" placeholder="Application..." x-model="applicationSearch"
                             style="width: 200px;">
@@ -224,10 +263,13 @@
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 25%">Action</th>
-                                    <th style="width: 20%">Application</th>
+                                    <th style="width: 22%">Action</th>
+                                    <th style="width: 16%">Family</th>
+                                    <th style="width: 8%">Version</th>
+                                    <th style="width: 10%">Status</th>
+                                    <th style="width: 14%">Application</th>
                                     <th>Schema</th>
-                                    <th style="width: 20%">Timestamp</th>
+                                    <th style="width: 15%">Timestamp</th>
                                 </tr>
                             </thead>
                             <tbody @refresher.window="refreshPage">
@@ -235,6 +277,23 @@
                                     <tr class="cursor-pointer" @click="previewing = action">
                                         <td>
                                             <span class="fw-medium" x-text="action.action"></span>
+                                        </td>
+                                        <td>
+                                            <span class="text-muted-custom text-sm font-mono" x-text="action.family || '—'"></span>
+                                        </td>
+                                        <td>
+                                            <span class="badge"
+                                                :class="action.version ? 'bg-primary bg-opacity-10 text-primary' : 'bg-secondary bg-opacity-10 text-secondary'"
+                                                x-text="action.version || 'base'"></span>
+                                        </td>
+                                        <td>
+                                            <span class="badge text-capitalize"
+                                                :class="{
+                                                    'bg-success bg-opacity-10 text-success': action.status === 'active',
+                                                    'bg-warning bg-opacity-10 text-warning': action.status === 'deprecated',
+                                                    'bg-secondary bg-opacity-10 text-secondary': action.status === 'retired' || !action.status
+                                                }"
+                                                x-text="action.status || '—'"></span>
                                         </td>
                                         <td>
                                             <span class="tag-id" x-text="action.application"></span>
@@ -250,7 +309,7 @@
                                 </template>
                                 <template x-if="actions.length === 0 && !loading">
                                     <tr>
-                                        <td colspan="4">
+                                        <td colspan="7">
                                             <div class="empty-state">
                                                 <span class="material-icons">bolt</span>
                                                 <p>No actions found</p>

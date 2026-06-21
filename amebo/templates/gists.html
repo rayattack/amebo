@@ -247,6 +247,7 @@
                             <th style="width: 5%">ID</th>
                             <th style="width: 9%">Status</th>
                             <th>Action</th>
+                            <th style="width: 6%">Version</th>
                             <th>Workspace</th>
                             <th>Publisher &rarr; Subscriber</th>
                             <th>Endpoint</th>
@@ -265,6 +266,11 @@
                                     <span class="badge-status" :class="statusClass(gist.status)" x-text="gist.status"></span>
                                 </td>
                                 <td @click="openPreview(gist)"><span class="fw-medium" x-text="gist.action"></span></td>
+                                <td @click="openPreview(gist)">
+                                    <span class="badge"
+                                        :class="gist.version ? 'bg-primary bg-opacity-10 text-primary' : 'bg-secondary bg-opacity-10 text-secondary'"
+                                        x-text="gist.version || 'base'"></span>
+                                </td>
                                 <td @click="openPreview(gist)">
                                     <span class="tag-id" x-show="gist.workspace" x-text="gist.workspace" :title="gist.workspace"></span>
                                     <span class="text-muted-custom text-sm" x-show="!gist.workspace">—</span>
@@ -303,7 +309,7 @@
                         </template>
                         <template x-if="gists.length === 0 && !loading">
                             <tr>
-                                <td colspan="11">
+                                <td colspan="12">
                                     <div class="empty-state">
                                         <span class="material-icons">send</span>
                                         <p>No delivery gists found</p>

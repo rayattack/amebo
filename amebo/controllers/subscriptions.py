@@ -13,6 +13,7 @@ from amebo.decorators.providers import contextualize, expects
 from amebo.models.subscriptions import Subscriptions, SubscriptionMigration
 from amebo.utils.helpers import get_pagination, get_timeline, datachecker, untokenize
 from amebo.utils.structs import Steps
+from amebo.utils.versioning import parse_action
 
 
 @jsonify
@@ -29,7 +30,8 @@ async def tabulate(req: Request, res, ctx: Context):
     executor = ctx.executor
     sqls = f'''
         SELECT
-            subscription, action, application, max_retries, handler, description, active, timestamped
+            subscription, action, application, max_retries, handler, description, active, timestamped,
+            (SELECT a.status FROM {executor.schema}actions a WHERE a.action = subscriptions.action) AS action_status
         FROM {executor.schema}subscriptions
             {steps.EQUALS('subscription', _id)}
             {steps.LIKE('application', _application)}
@@ -56,8 +58,11 @@ async def tabulate(req: Request, res, ctx: Context):
         'endpoint': handler,
         'description': description,
         'active': bool(active),
-        'timestamped': timestamped
-    } for subscription, action, application, max_retries, handler, description, active, timestamped in rows]
+        'timestamped': timestamped,
+        'family': parse_action(action)['family'],
+        'version': parse_action(action)['version'],
+        'action_status': action_status
+    } for subscription, action, application, max_retries, handler, description, active, timestamped, action_status in rows]
 
 
 @jsonify

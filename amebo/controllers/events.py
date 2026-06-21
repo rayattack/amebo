@@ -15,6 +15,7 @@ from amebo.models.events import Events
 from amebo.utils.helpers import get_pagination, get_timeline, datachecker, redact_payload
 from amebo.controllers.redactions import fetch_redacted_paths
 from amebo.utils.structs import Steps
+from amebo.utils.versioning import parse_action
 
 
 @jsonify
@@ -58,7 +59,9 @@ async def tabulate(req: Request, res: Response, ctx: Context):
         'action': action,
         'payload': redact_payload(redactions_by_action.get(action, []), loads(payload)),
         'deduper': deduper,
-        'timestamped': timestamped
+        'timestamped': timestamped,
+        'family': parse_action(action)['family'],
+        'version': parse_action(action)['version']
     } for event, action, payload, deduper, timestamped, results in rows]
 
 

@@ -79,6 +79,7 @@ router.POST('/v1/requeues', 'amebo.controllers.gists.requeue')  # hand failed gi
 router.POST('/v1/backfills', 'amebo.controllers.gists.backfill')  # re-register subscription vs history
 router.GET('/v1/metrics/deliveries', 'amebo.controllers.metrics.deliveries')
 router.GET('/v1/metrics/subscriptions', 'amebo.controllers.metrics.subscriptions')
+router.GET('/v1/metrics/versions', 'amebo.controllers.metrics.versions')
 router.PUT('/v1/applications/:id', 'amebo.controllers.applications.update')
 router.PUT('/v1/applications/:id/secret', 'amebo.controllers.applications.set_secret')
 router.POST('/v1/applications/:id/apikey', 'amebo.controllers.applications.regenerate_apikey')
