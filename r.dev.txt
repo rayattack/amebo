@@ -8,4 +8,6 @@ poetry==2.2.1
 pydantic==2.12.2
 PyJWT==2.10.1
 pytest==8.3.3
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
 python-dotenv==1.0.1

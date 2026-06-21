@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from http import HTTPStatus
 from sqlite3 import Connection
@@ -6,13 +7,16 @@ from asyncpg import UniqueViolationError
 from heaven import Context, Request, Response
 from orjson import loads
 
-from amebo.constants.literals import DB, MAX_PAGINATION, X_AMEBO_SIGNATURE
+from amebo.constants.literals import DB, MAX_PAGINATION, X_AMEBO_SIGNATURE, X_AMEBO_TIMESTAMP
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import contextualize, expects
 from amebo.models.redactions import Redaction
-from amebo.utils.helpers import get_pagination, get_timeline, datachecker
+from amebo.utils.helpers import get_pagination, get_timeline, verify_request_signature
 from amebo.utils.structs import Steps
 from amebo.utils.versioning import parse_action
+
+
+logger = logging.getLogger('amebo.redactions')
 
 
 async def fetch_redacted_paths(executor, action):
@@ -62,8 +66,9 @@ async def tabulate(req: Request, res: Response, ctx: Context):
     '''
     try: rows = await executor.fetch(2).execute(sqls, *steps.values)
     except Exception as exc:
+        logger.error('Could not list redactions: %s', exc)
         res.status = HTTPStatus.BAD_REQUEST
-        res.body = {'error': f'{exc}'}
+        res.body = {'error': 'Could not list redactions'}
         return
 
     res.status = HTTPStatus.OK
@@ -98,11 +103,16 @@ async def insert(req: Request, res: Response, ctx: Context):
         application, secret = row
         body = loads(req.body)
         if request_signature:
-            if not datachecker(body, request_signature, secret): raise ValueError('Invalid signature')
+            ok, _ = verify_request_signature(body, request_signature, secret,
+                                             timestamp=req.headers.get(X_AMEBO_TIMESTAMP))
+            if not ok: raise ValueError('Invalid signature')
         else:
             if body.get('secret') != secret: raise ValueError('Invalid secret')
+    except ValueError as exc:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': str(exc)})
     except Exception as exc:
-        return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'{exc}'})
+        logger.error('Redaction insert authorization failed: %s', exc)
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Could not authorize request'})
 
     fields = ('action', 'field_path', 'timestamped',)
     values = (redaction.action, redaction.field_path, redaction.timestamped.isoformat())
@@ -113,7 +123,8 @@ async def insert(req: Request, res: Response, ctx: Context):
     except UniqueViolationError:
         return res.out(HTTPStatus.CONFLICT, {'error': f'{redaction.field_path} is already redacted for {redaction.action}'})
     except Exception as exc:
-        return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
+        logger.error('Could not create redaction: %s', exc)
+        return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': 'Could not create redaction'})
 
     res.status = HTTPStatus.CREATED
     res.body = redaction.model_dump()
@@ -130,7 +141,8 @@ async def remove(req: Request, res: Response, ctx: Context):
         sqls = f'''DELETE FROM {executor.schema}redactions WHERE rowid = {steps.next()}'''
         await executor.fetch(0).execute(sqls, identifier)
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        logger.error('Could not remove redaction: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not remove redaction'})
 
     res.status = HTTPStatus.ACCEPTED
     res.body = {'removed': identifier}

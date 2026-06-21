@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 from http import HTTPStatus
 from sqlite3 import Connection, IntegrityError
@@ -8,14 +9,17 @@ from fastjsonschema import JsonSchemaException
 from heaven import Context, Request, Response
 from orjson import dumps, loads
 
-from amebo.constants.literals import DB, MAX_PAGINATION
+from amebo.constants.literals import DB, MAX_PAGINATION, X_AMEBO_SIGNATURE, X_AMEBO_TIMESTAMP
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import contextualize, expects, _compile_schema
 from amebo.models.events import Events
-from amebo.utils.helpers import get_pagination, get_timeline, datachecker, redact_payload
+from amebo.utils.helpers import get_pagination, get_timeline, verify_request_signature, redact_payload
 from amebo.controllers.redactions import fetch_redacted_paths
 from amebo.utils.structs import Steps
 from amebo.utils.versioning import parse_action
+
+
+logger = logging.getLogger('amebo.events')
 
 
 @jsonify
@@ -90,7 +94,10 @@ async def insert(req: Request, res: Response, ctx: Context):
             return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, {'error': 'Action can not be used to process any events'})
 
         schemata, application, app_secret, status, successor = row
-        if not datachecker(loads(req.body), req.headers.get('x-amebo-signature'), app_secret):
+        ok, _ = verify_request_signature(
+            loads(req.body), req.headers.get(X_AMEBO_SIGNATURE), app_secret,
+            timestamp=req.headers.get(X_AMEBO_TIMESTAMP))
+        if not ok:
             return res.out(HTTPStatus.UNAUTHORIZED, 'Invalid signature')
 
         # retired actions accept no new events (history + in-flight gists are untouched);
@@ -142,7 +149,8 @@ async def insert(req: Request, res: Response, ctx: Context):
     except JsonSchemaException as exc:
         return res.out(HTTPStatus.NOT_ACCEPTABLE, {'error': f'Event payload does not conform to {event.action} schema'})
     except ModuleNotFoundError as exc:
-        return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
+        logger.error('Schema engine unavailable: %s', exc)
+        return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': 'Schema engine unavailable'})
     except (UniqueViolationError, IntegrityError):
         # Idempotent publish. The UNIQUE(deduper, payload) guard means this exact event was
         # already accepted: its row and gists already exist, and the INSERT above failed before

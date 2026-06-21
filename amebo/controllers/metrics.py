@@ -1,3 +1,4 @@
+import logging
 from http import HTTPStatus
 
 from heaven import Context, Request, Response
@@ -5,6 +6,9 @@ from heaven import Context, Request, Response
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import contextualize
 from amebo.controllers.gists import _timeline_cutoff, GISTS_FROM
+
+
+logger = logging.getLogger('amebo.metrics')
 
 
 # SUM(CASE ...) fragments that mirror helpers.status_expr / STATUS_PREDICATES exactly.
@@ -42,7 +46,8 @@ async def deliveries(req: Request, res: Response, ctx: Context):
         row = await executor.fetch(1).execute(counts_sql, *gist_args)
         prow = await executor.fetch(1).execute(published_sql, *event_args)
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        logger.error('Could not compute deliveries metrics: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not compute metrics'})
 
     delivered, failed, retrying, pending, total = (row or (0, 0, 0, 0, 0))
     delivered, failed, retrying, pending, total = (
@@ -89,7 +94,8 @@ async def subscriptions(req: Request, res: Response, ctx: Context):
         rows = await executor.fetch(2).execute(counts_sql)
         erows = await executor.fetch(2).execute(errors_sql)
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        logger.error('Could not compute subscriptions metrics: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not compute metrics'})
 
     latest_error = {}
     for sub, err, at, code in (erows or []):
@@ -149,7 +155,8 @@ async def versions(req: Request, res: Response, ctx: Context):
         drow = await executor.fetch(1).execute(dep_subs_sql)
         arows = await executor.fetch(2).execute(at_risk_sql)
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        logger.error('Could not compute versions metrics: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not compute metrics'})
 
     by_status = {'active': 0, 'deprecated': 0, 'retired': 0}
     for status, count in (srows or []):

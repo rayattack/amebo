@@ -1,3 +1,4 @@
+import logging
 from http import HTTPStatus
 from sqlite3 import Connection, Cursor
 
@@ -6,16 +7,19 @@ from asyncpg import UniqueViolationError
 from heaven import Context, Request, Response
 from orjson import dumps, loads
 
-from amebo.constants.literals import DB, MAX_PAGINATION, X_AMEBO_SIGNATURE, X_AMEBO_REDACT, AMEBO_SECRET
+from amebo.constants.literals import DB, MAX_PAGINATION, X_AMEBO_SIGNATURE, X_AMEBO_TIMESTAMP, X_AMEBO_REDACT, AMEBO_SECRET
 from amebo.controllers.redactions import bulk_insert_redactions
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import contextualize, expects
 from amebo.decorators.providers import cacheschema
 from amebo.models.actions import Action, ActionTransition
 from amebo.utils.compatibility import check as check_compatibility
-from amebo.utils.helpers import get_pagination, get_timeline, datachecker, untokenize
+from amebo.utils.helpers import get_pagination, get_timeline, verify_request_signature, untokenize
 from amebo.utils.structs import Steps
 from amebo.utils.versioning import parse_action, schema_fingerprint, next_version_hint
+
+
+logger = logging.getLogger('amebo.actions')
 
 
 @jsonify
@@ -46,8 +50,9 @@ async def tabulate(req: Request, res: Response, ctx: Context):
     '''
     try: rows = await executor.fetch(2).execute(sqls, *steps.values)
     except Exception as exc:
+        logger.error('Could not list actions: %s', exc)
         res.status = HTTPStatus.BAD_REQUEST
-        res.body = {'error': f'{exc}'}
+        res.body = {'error': 'Could not list actions'}
         return
 
     res.status = HTTPStatus.OK
@@ -84,7 +89,9 @@ async def insert(req: Request, res: Response, ctx: Context):
         application, secret = _application
         body = loads(req.body)
         if request_signature:
-            if not datachecker(body, request_signature, secret): raise ValueError('Invalid signature')
+            ok, _ = verify_request_signature(body, request_signature, secret,
+                                             timestamp=req.headers.get(X_AMEBO_TIMESTAMP))
+            if not ok: raise ValueError('Invalid signature')
         else:
             # allow admin JWT cookie as fallback (for UI-based action creation)
             admin_auth = req.cookies.get('Authentication')
@@ -93,8 +100,11 @@ async def insert(req: Request, res: Response, ctx: Context):
                 except Exception: raise ValueError('Invalid admin credentials')
             elif body.get('secret') != secret:
                 raise ValueError('Invalid secret')
+    except ValueError as exc:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': str(exc)})
     except Exception as exc:
-        return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'{exc}'})
+        logger.error('Action insert authorization failed: %s', exc)
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Could not authorize request'})
 
     parsed = parse_action(action.action)
     family = parsed['family']
@@ -167,7 +177,8 @@ async def insert(req: Request, res: Response, ctx: Context):
         return res.out(HTTPStatus.OK, {**action.model_dump(), 'family': family,
                                        'version': parsed['version'], 'status': 'active', 'unchanged': True})
     except Exception as exc:
-        return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
+        logger.error('Could not create action: %s', exc)
+        return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': 'Could not create action'})
 
     # handle x-amebo-redact header: space-separated field paths
     redact_header = req.headers.get(X_AMEBO_REDACT)
@@ -208,14 +219,19 @@ async def transition(req: Request, res: Response, ctx: Context):
     request_signature = req.headers.get(X_AMEBO_SIGNATURE)
     try:
         if request_signature:
-            if not datachecker(loads(req.body), request_signature, secret): raise ValueError('Invalid signature')
+            ok, _ = verify_request_signature(loads(req.body), request_signature, secret,
+                                             timestamp=req.headers.get(X_AMEBO_TIMESTAMP))
+            if not ok: raise ValueError('Invalid signature')
         else:
             admin_auth = req.cookies.get('Authentication')
             if not admin_auth: raise ValueError('Authentication required')
             try: untokenize(admin_auth, req.app.peek(AMEBO_SECRET))
             except Exception: raise ValueError('Invalid admin credentials')
+    except ValueError as exc:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': str(exc)})
     except Exception as exc:
-        return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'{exc}'})
+        logger.error('Action transition authorization failed: %s', exc)
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Could not authorize request'})
 
     sqlite = executor.engine == 'sqlite'
     set_parts, args = [], []
@@ -231,7 +247,8 @@ async def transition(req: Request, res: Response, ctx: Context):
     sqls = f'UPDATE {executor.schema}actions SET {", ".join(set_parts)} WHERE action = {where_ph}'
     try: await executor.fetch(0).execute(sqls, *args)
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        logger.error('Could not transition action: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not transition action'})
 
     res.status = HTTPStatus.OK
     res.body = {
@@ -296,7 +313,8 @@ async def remove(req: Request, res: Response, ctx: Context):
             action_name,
         )
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        logger.error('Could not remove action: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not remove action'})
 
     res.status = HTTPStatus.ACCEPTED
     res.body = {'removed': action_name}

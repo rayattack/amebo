@@ -131,3 +131,18 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
 ]
+
+[tool.coverage.run]
+# These modules are dead scaffolding — nothing in the live tree (router.py, the
+# controllers, middlewares, or the `amebo` entrypoint) imports them. They are
+# excluded so coverage reflects the shipped surface, not abandoned code. They are
+# also deletion candidates; remove the file + this entry together.
+omit = [
+    "amebo/engines.py",
+    "amebo/entities.py",
+    "amebo/handlers.py",
+    "amebo/amebo_readers.py",
+    "amebo/amebo_writers.py",
+    "amebo/libs/*",
+    "tests/*",
+]

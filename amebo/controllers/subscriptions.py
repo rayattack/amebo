@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from http import HTTPStatus
 from sqlite3 import Connection, Cursor, IntegrityError
@@ -7,13 +8,16 @@ from asyncpg import ForeignKeyViolationError, UniqueViolationError
 from heaven import Context, Request, Response
 from orjson import loads
 
-from amebo.constants.literals import DB, MAX_PAGINATION, X_AMEBO_SIGNATURE, AMEBO_SECRET
+from amebo.constants.literals import DB, MAX_PAGINATION, X_AMEBO_SIGNATURE, X_AMEBO_TIMESTAMP, AMEBO_SECRET
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import contextualize, expects
 from amebo.models.subscriptions import Subscriptions, SubscriptionMigration
-from amebo.utils.helpers import get_pagination, get_timeline, datachecker, untokenize
+from amebo.utils.helpers import get_pagination, get_timeline, verify_request_signature, untokenize
 from amebo.utils.structs import Steps
 from amebo.utils.versioning import parse_action
+
+
+logger = logging.getLogger('amebo.subscriptions')
 
 
 @jsonify
@@ -79,7 +83,8 @@ async def insert(req: Request, res: Response, ctx: Context):
         sqls = f'SELECT address, secret FROM {executor.schema}applications WHERE application = {steps.next()} AND active = 1'
         rows = await executor.fetch(1).execute(sqls, subscriptions.application)
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'Invalid data submmitted {exc}'})
+        logger.error('Could not validate subscription application: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Invalid data submitted'})
     if not rows: return res.out(HTTPStatus.EXPECTATION_FAILED, {'error': 'Subscription request rejected'})
 
     try:
@@ -87,7 +92,9 @@ async def insert(req: Request, res: Response, ctx: Context):
         host = address.strip('/')
     except Exception: return res.out(HTTPStatus.UNPROCESSABLE_ENTITY, 'Can not process the event with information provided')
 
-    if not datachecker(loads(req.body), request_signature, secret):
+    ok, _ = verify_request_signature(loads(req.body), request_signature, secret,
+                                     timestamp=req.headers.get(X_AMEBO_TIMESTAMP))
+    if not ok:
         return res.out(HTTPStatus.UNAUTHORIZED, 'Invalid signature')
 
     address = f'{host}{subscriptions.handler}'
@@ -119,7 +126,8 @@ async def insert(req: Request, res: Response, ctx: Context):
     except ForeignKeyViolationError as exc:
         return res.out(HTTPStatus.FORBIDDEN, {'error': f'Action {subscriptions.action} does not exist'})
     except Exception as exc:
-        return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': f'{exc}'})
+        logger.error('Could not create subscription: %s', exc)
+        return res.out(HTTPStatus.UPGRADE_REQUIRED, {'error': 'Could not create subscription'})
 
     res.status = HTTPStatus.CREATED
     res.body = subscriptions.model_dump(exclude={'subscription'})
@@ -146,7 +154,8 @@ async def remove(req: Request, res: Response, ctx: Context):
     '''
     try: row = await executor.fetch(1).execute(sqls, subscription_id)
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        logger.error('Could not look up subscription: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process request'})
     if not row:
         return res.out(HTTPStatus.NOT_FOUND, {'error': 'Subscription not found'})
     application, secret = row
@@ -155,20 +164,26 @@ async def remove(req: Request, res: Response, ctx: Context):
     try:
         if request_signature:
             body = loads(req.body) if req.body else {}
-            if not datachecker(body, request_signature, secret): raise ValueError('Invalid signature')
+            ok, _ = verify_request_signature(body, request_signature, secret,
+                                             timestamp=req.headers.get(X_AMEBO_TIMESTAMP))
+            if not ok: raise ValueError('Invalid signature')
         else:
             admin_auth = req.cookies.get('Authentication')
             if not admin_auth: raise ValueError('Authentication required')
             try: untokenize(admin_auth, req.app.peek(AMEBO_SECRET))
             except Exception: raise ValueError('Invalid admin credentials')
+    except ValueError as exc:
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': str(exc)})
     except Exception as exc:
-        return res.out(HTTPStatus.UNAUTHORIZED, {'error': f'{exc}'})
+        logger.error('Subscription remove authorization failed: %s', exc)
+        return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Could not authorize request'})
 
     steps = Steps(req.app._.engine)
     upd = f'UPDATE {executor.schema}subscriptions SET active = 0 WHERE subscription = {steps.next()}{uc}'
     try: await executor.fetch(0).execute(upd, subscription_id)
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        logger.error('Could not deactivate subscription: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process request'})
 
     return res.out(HTTPStatus.ACCEPTED, {'unsubscribed': subscription_id, 'active': False})
 
@@ -234,7 +249,8 @@ async def migrate(req: Request, res: Response, ctx: Context):
             await executor.fetch(0).execute(upd, application, to_action, handler)
             reactivated += 1
         except Exception as exc:
-            return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+            logger.error('Could not migrate subscription: %s', exc)
+            return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not migrate subscription'})
 
     if migration.deactivate_source:
         steps = Steps(req.app._.engine)

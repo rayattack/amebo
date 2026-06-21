@@ -12,3 +12,4 @@ SQLITE = 'sqlite'
 
 X_AMEBO_SIGNATURE = 'x-amebo-signature'
 X_AMEBO_REDACT = 'x-amebo-redact'
+X_AMEBO_TIMESTAMP = 'x-amebo-timestamp'

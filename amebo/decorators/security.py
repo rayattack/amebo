@@ -28,33 +28,6 @@ async def authenticate(req: Request, res: Response, ctx: Context):
     ctx.keep('metadata', metadata)
 
 
-def authorization(func):
-    async def delegate(req: Request, res: Response, ctx: Context):
-        sk = req.app.peek(AMEBO_SECRET)
-        authorization = req.headers.get('authorization')
-        authentication = req.cookies.get('Authentication')
-
-        if not authorization or authentication: return res.out(HTTPStatus.UNAVAILABLE_FOR_LEGAL_REASONS, {'error': 'No credentials provided'})
-        if iscoroutinefunction(func): return await func(req, res, ctx)
-
-        try:
-            if authorization: _, token = authorization.split(' ', 1)
-            else: token = authentication
-        except Exception: return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process your credentials'})
-
-        try: metadata = decode(token, sk, algorithms='HS256')
-        except Exception: return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Invalid credentials detected'})
-
-        # user producer name to use for token lookup from global app state
-        producer = metadata.get('producer')
-        token = req.app._.tokens._data.get(producer)
-        if not token: return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Application credentials cache cleared at app startup'})
-
-        ctx.keep('token', token)
-        return func(req, res, ctx)
-    return delegate
-
-
 def protected(func):
     async def delegate(req: Request, res: Response, ctx: Context):
         sk = req.app.peek(AMEBO_SECRET)

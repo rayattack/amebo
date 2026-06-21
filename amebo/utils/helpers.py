@@ -1,4 +1,6 @@
-import hashlib, hmac, secrets
+import hashlib, hmac, secrets, time
+
+from os import environ
 
 from bcrypt import checkpw, gensalt, hashpw
 from orjson import dumps
@@ -113,6 +115,53 @@ def datasigner(payload: dict, secret_key: str):
 def datachecker(payload, signature, secret_key):
     """Check if payload is signed with secret key"""
     return hmac.compare_digest(signature, datasigner(payload, secret_key))
+
+
+# Default window (seconds) a timestamped request stays valid. Overridable via env.
+DEFAULT_REPLAY_TOLERANCE = 300
+
+
+def replay_tolerance():
+    try: return int(environ.get('AMEBO_REPLAY_TOLERANCE') or DEFAULT_REPLAY_TOLERANCE)
+    except (TypeError, ValueError): return DEFAULT_REPLAY_TOLERANCE
+
+
+def timestamped_signer(payload: dict, secret_key: str, timestamp):
+    """HMAC over '<timestamp>.' + canonical body bytes. Binding the timestamp
+    into the signed content is what makes the signature non-replayable: an
+    attacker can't reuse a captured signature with a fresh timestamp header."""
+    sb = secret_key.encode('utf-8')
+    signed = f'{timestamp}.'.encode('utf-8') + dumps(payload)
+    return hmac.new(sb, signed, hashlib.sha256).hexdigest()
+
+
+def verify_request_signature(payload, signature, secret_key, timestamp=None, tolerance=None):
+    """Backward-compatible inbound HMAC verification with optional replay protection.
+
+    Returns ``(ok, reason)``.
+
+    - If ``timestamp`` (the ``x-amebo-timestamp`` header) is present, the signature
+      must cover ``'<timestamp>.<body>'`` AND the timestamp must be within
+      ``tolerance`` seconds of now — so a captured request can't be replayed once
+      the window passes.
+    - If ``timestamp`` is absent/empty, falls back to the legacy body-only scheme so
+      existing clients keep working. Replay protection is therefore opt-in: clients
+      gain it by starting to send a signed timestamp.
+    """
+    if not signature:
+        return False, 'missing signature'
+
+    if timestamp is not None and str(timestamp) != '':
+        try: ts = int(timestamp)
+        except (TypeError, ValueError): return False, 'invalid timestamp'
+        tol = tolerance if tolerance is not None else replay_tolerance()
+        if abs(int(time.time()) - ts) > tol:
+            return False, 'stale or future timestamp'
+        expected = timestamped_signer(payload, secret_key, ts)
+        return hmac.compare_digest(signature, expected), None
+
+    # legacy body-only signature (no replay protection)
+    return hmac.compare_digest(signature, datasigner(payload, secret_key)), None
 
 
 def generate_apikey():

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 from http import HTTPStatus
 from math import ceil
@@ -19,6 +20,9 @@ from amebo.utils.structs import Steps
 from amebo.utils.versioning import parse_action
 from amebo.models.gists import Ack
 from amebo.controllers.redactions import fetch_redacted_paths
+
+
+logger = logging.getLogger('amebo.gists')
 
 
 # status -> the raw (param-less) SQL predicate that selects it. Mirrors helpers.status_expr
@@ -167,7 +171,8 @@ async def tabulate(req: Request, res: Response, ctx: Context):
         rows = await executor.fetch(2).execute(sqls, *where.values)
         total_row = await executor.fetch(1).execute(f'SELECT COUNT(*) {frm} {clause};', *where.values)
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        logger.error('Could not list gists: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not list gists'})
 
     rows = rows or []
     total = total_row[0] if total_row else 0
@@ -317,7 +322,8 @@ async def replay(req: Request, res: Response, ctx: Context):
     try:
         gist = await _fetch_gist(executor, rowid)
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        logger.error('Could not process replay request: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process request'})
 
     if not gist: return res.out(HTTPStatus.NOT_FOUND, {'error': 'Gist not found'})
 
@@ -336,7 +342,9 @@ async def time_travel(req: Request, res: Response, ctx: Context):
     where = _build_filters(req, executor.engine, default_status='failed')
     sqls = f'SELECT COUNT(*) {GISTS_FROM.format(x=executor.schema)} {where.clause()};'
     try: row = await executor.fetch(1).execute(sqls, *where.values)
-    except Exception as exc: return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+    except Exception as exc:
+        logger.error('Could not process bulk replay dry-run: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process request'})
     return res.out(HTTPStatus.OK, {'count': row[0] if row else 0, 'dry_run': True})
 
 
@@ -358,7 +366,9 @@ async def bulk_replay(req: Request, res: Response, ctx: Context):
         ORDER BY e.timestamped ASC, g.rowid ASC;
     '''
     try: gists = await executor.fetch(2).execute(sqls, *where.values)
-    except Exception as exc: return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+    except Exception as exc:
+        logger.error('Could not process bulk replay: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process request'})
 
     gists = gists or []
     succeeded, still_failing = 0, 0
@@ -386,7 +396,9 @@ async def requeue(req: Request, res: Response, ctx: Context):
     # gather matching rowids first (UPDATE...JOIN isn't portable across both backends)
     sqls = f'SELECT g.rowid {GISTS_FROM.format(x=x)} {where.clause()};'
     try: rows = await executor.fetch(2).execute(sqls, *where.values)
-    except Exception as exc: return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+    except Exception as exc:
+        logger.error('Could not process requeue request: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process request'})
 
     rows = rows or []
     for row in rows:
@@ -395,7 +407,9 @@ async def requeue(req: Request, res: Response, ctx: Context):
         upd = f'''UPDATE {x}gists SET sleep_until = {p1}{cast}, retries = 0, completed = 0,
             last_error = NULL, last_status_code = NULL, dead_at = NULL WHERE rowid = {p2};'''
         try: await executor.fetch(0).execute(upd, now, row[0])
-        except Exception as exc: return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        except Exception as exc:
+            logger.error('Could not requeue gist: %s', exc)
+            return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process request'})
 
     # wake the daemon (PG only; no-op on sqlite)
     if executor.engine.startswith('post'):
@@ -431,7 +445,8 @@ async def backfill(req: Request, res: Response, ctx: Context):
         srow = await executor.fetch(1).execute(
             f'SELECT action FROM {x}subscriptions WHERE subscription = {p};', subscription)
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        logger.error('Could not resolve backfill subscription: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process request'})
     if not srow: return res.out(HTTPStatus.NOT_FOUND, {'error': 'Subscription not found'})
     action = srow[0]
 
@@ -440,7 +455,9 @@ async def backfill(req: Request, res: Response, ctx: Context):
     if cutoff: where.add('e.timestamped > {p}', cutoff)
     count_sql = f'SELECT COUNT(*) FROM {x}events e {where.clause()};'
     try: crow = await executor.fetch(1).execute(count_sql, *where.values)
-    except Exception as exc: return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+    except Exception as exc:
+        logger.error('Could not count backfill events: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process request'})
     matched = crow[0] if crow else 0
 
     if dry_run:
@@ -471,7 +488,8 @@ async def backfill(req: Request, res: Response, ctx: Context):
     try:
         await executor.fetch(0).execute(insert_sql, *args)
     except Exception as exc:
-        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'{exc}'})
+        logger.error('Could not backfill gists: %s', exc)
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': 'Could not process request'})
 
     if executor.engine.startswith('post'):
         try: await executor.fetch(0).execute("SELECT pg_notify('aproko_wake', '')")

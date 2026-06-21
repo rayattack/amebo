@@ -1,3 +1,4 @@
+import logging
 from http import HTTPStatus
 from inspect import iscoroutinefunction
 from sqlite3 import Connection, Cursor, IntegrityError
@@ -12,9 +13,13 @@ from amebo.constants.literals import DB, AMEBO_SECRET, MAX_PAGINATION
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import contextualize, expects
 from amebo.utils.helpers import get_pagination, get_timeline, tokenize, untokenize, generate_apikey, verify_apikey
+from amebo.utils.netguard import validate_webhook_url
+from amebo.utils.throttle import rate_limited, reset_attempts, client_key
 
 from amebo.models.applications import Credential, Location, Application, Token, Provision, SecretUpdate
 from amebo.utils.structs import Steps
+
+logger = logging.getLogger('amebo.applications')
 
 
 @jsonify
@@ -24,6 +29,13 @@ async def authenticate(req: Request, res: Response, ctx: Context):
     def unauthorized():
         res.status = HTTPStatus.UNAUTHORIZED
         res.body = {'error': 'could not authenticate microservice'}
+
+    # Throttle brute-force / credential-stuffing on the credential endpoint.
+    throttle_key = client_key(req, scope='tokens')
+    if rate_limited(throttle_key):
+        res.status = HTTPStatus.TOO_MANY_REQUESTS
+        res.body = {'error': 'Too many authentication attempts; try again later'}
+        return
 
     db: Connection = req.app.peek(DB)
     credential: Credential = ctx.credential
@@ -44,12 +56,16 @@ async def authenticate(req: Request, res: Response, ctx: Context):
         '''
         row = await executor.fetch(1).execute(SQL, (credential.username))
     except Exception as exc:
+        logger.error('Authentication lookup failed: %s', exc)
         return unauthorized()
 
     if not row: return unauthorized()
     username, password = row
     if not checkpw(credential.password.encode(), password.encode()): return unauthorized()
     # no feedback is provided if secret key mismatches i.e. continue indicates just that
+
+    # successful auth — clear this client's failed-attempt history
+    reset_attempts(throttle_key)
 
     token = tokenize({
         'scheme': credential.scheme,
@@ -81,8 +97,9 @@ async def tabulate(req: Request, res: Response, ctx: Context):
     '''
     try: rows = await executor.fetch(2).execute(sqls, *steps.values)
     except Exception as exc:
+        logger.error('Listing applications failed: %s', exc)
         res.status = HTTPStatus.BAD_REQUEST
-        res.body = {'error': f'{exc}'}
+        res.body = {'error': 'Could not list applications'}
         return
 
     res.status = HTTPStatus.OK
@@ -107,6 +124,13 @@ async def insert(req: Request, res: Response, ctx: Context):
         return res.out(HTTPStatus.UNAUTHORIZED, {'error': 'Invalid admin credentials'})
 
     provision: Provision = ctx.provision
+
+    # SSRF guard: an application's address is a delivery target. Reject addresses
+    # that resolve to internal/non-routable hosts up front (see utils.netguard).
+    ok, reason = validate_webhook_url(provision.address)
+    if not ok:
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'Invalid application address: {reason}'})
+
     plaintext_key, hashed_key = generate_apikey()
     steps = Steps(req.app._.engine)
     try:
@@ -114,13 +138,14 @@ async def insert(req: Request, res: Response, ctx: Context):
         values = (str(provision.application), str(provision.address), '', hashed_key, 1, provision.timestamped.isoformat())
         sqls = f'''INSERT INTO {executor.schema}applications(application, address, secret, apikey, active, timestamped) VALUES ({steps.next(6)})'''
         await executor.execute(sqls, *values)
-    except (UniqueViolationError, IntegrityError) as exc:
+    except (UniqueViolationError, IntegrityError):
         res.status = HTTPStatus.CONFLICT
-        res.body = {'error': f'{exc}'}
+        res.body = {'error': f'Application {provision.application} already exists'}
         return
     except Exception as exc:
+        logger.error('Provisioning application failed: %s', exc)
         res.status = HTTPStatus.NOT_ACCEPTABLE
-        res.body = {'error': f'{exc}'}
+        res.body = {'error': 'Could not provision application'}
         return
 
     res.status = HTTPStatus.CREATED
@@ -139,6 +164,11 @@ def update(req: Request, res: Response, ctx: Context):
     db: Connection = req.app.peek(DB)
     application = req.params.get('id')
     location: Location = ctx.location
+
+    # SSRF guard: changing an application's address re-points its delivery target.
+    ok, reason = validate_webhook_url(location.location)
+    if not ok:
+        return res.out(HTTPStatus.BAD_REQUEST, {'error': f'Invalid application address: {reason}'})
 
     executor = ctx.executor()
     try:
