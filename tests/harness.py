@@ -83,13 +83,17 @@ class _Dict:
 
 
 class FakeReq:
-    def __init__(self, app, queries=None, params=None, headers=None, cookies=None, body=None):
+    def __init__(self, app, queries=None, params=None, headers=None, cookies=None, body=None,
+                 method='GET', url='/', ip='127.0.0.1'):
         self.app = app
         self.queries = _Dict(queries)
         self.params = _Dict(params)
         self.headers = _Dict(headers if headers is not None else {'content-type': 'application/json'})
         self.cookies = _Dict(cookies)
         self.body = body
+        self.method = method
+        self.url = url
+        self.ip = ip
 
 
 class FakeRes:

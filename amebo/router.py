@@ -9,11 +9,11 @@ from heaven.constants import STARTUP, SHUTDOWN
 # src code
 from amebo import __version__
 from amebo.aproko import aproko
+from amebo.utils.logs import configure_logging
 
-logging.basicConfig(
-    level=getattr(logging, environ.get('AMEBO_LOG_LEVEL', 'INFO').upper(), logging.INFO),
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-)
+# Structured logging (text by default, JSON via AMEBO_LOG_FORMAT=json) with request-id
+# stamping. Replaces a bare basicConfig so every log line is correlatable to a request.
+configure_logging()
 
 
 router = Application({
@@ -44,6 +44,15 @@ router.ON(SHUTDOWN, 'amebo.middlewares.database.disconnect')
 
 # hooks
 router.BEFORE('/*', 'amebo.middlewares.security.cors')
+router.BEFORE('/*', 'amebo.middlewares.observability.request_context')
+router.AFTER('/*', 'amebo.middlewares.observability.access_log')
+
+
+# operability: liveness, readiness, prometheus metrics (unauthenticated probes)
+router.GET('/health', 'amebo.controllers.health.health')
+router.GET('/healthz', 'amebo.controllers.health.health')
+router.GET('/readyz', 'amebo.controllers.health.readyz')
+router.GET('/metrics', 'amebo.controllers.metrics.prometheus')
 
 
 # authenticate first

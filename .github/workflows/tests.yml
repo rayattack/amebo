@@ -1,0 +1,93 @@
+name: Tests
+
+# Runs the test suite against BOTH database backends on every push/PR:
+#   - SQLite (always, in-memory)
+#   - PostgreSQL (a real service container; activated by setting AMEBO_TEST_DSN)
+# so the cross-backend SQL — `$n` placeholders, uuid/timestamptz casts, SKIP LOCKED —
+# is actually exercised in CI rather than only on a maintainer's machine.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: pytest (py${{ matrix.python-version }}, SQLite + PostgreSQL)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.8 is EOL; the floor bump to 3.9+ is tracked separately in sstier.md.
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: amebo
+          POSTGRES_PASSWORD: amebo
+          POSTGRES_DB: amebo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U amebo"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      # Presence of this var flips the recovery suite's PostgreSQL variant on.
+      AMEBO_TEST_DSN: postgresql://amebo:amebo@localhost:5432/amebo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio pytest-cov
+
+      - name: Run tests (SQLite + PostgreSQL) with coverage
+        # Coverage flags come from pyproject [tool.pytest.ini_options] addopts;
+        # the gate is a ratchet floor (current ~79%) — raise it as coverage grows.
+        run: pytest tests/ --cov-fail-under=70
+
+      - name: Upload coverage XML
+        if: ${{ matrix.python-version == '3.12' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+        continue-on-error: true
+
+  types:
+    name: mypy (advisory)
+    runs-on: ubuntu-latest
+    # ADVISORY ONLY — does not block merges yet. The codebase has a large
+    # pre-existing untyped surface (~350 errors under the strict config in
+    # pyproject). This job makes that number visible so it can be ratcheted
+    # down; flip `continue-on-error` off once the baseline is cleared.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install mypy
+      - name: Run mypy
+        run: mypy amebo

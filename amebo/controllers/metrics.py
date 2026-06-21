@@ -177,3 +177,82 @@ async def versions(req: Request, res: Response, ctx: Context):
         'subscriptions_on_deprecated': int(drow[0]) if drow and drow[0] is not None else 0,
         'at_risk': at_risk,
     })
+
+
+PROMETHEUS_CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8'
+
+
+def _family(lines, name, help_text, samples, mtype='gauge'):
+    """Append one Prometheus metric family: HELP/TYPE once, then each sample.
+    `samples` is a list of (labels_dict_or_None, value)."""
+    lines.append(f'# HELP {name} {help_text}')
+    lines.append(f'# TYPE {name} {mtype}')
+    for labels, value in samples:
+        if labels:
+            label_str = ','.join(f'{k}="{v}"' for k, v in labels.items())
+            lines.append(f'{name}{{{label_str}}} {value}')
+        else:
+            lines.append(f'{name} {value}')
+
+
+@contextualize
+async def prometheus(req: Request, res: Response, ctx: Context):
+    """Prometheus exposition-format endpoint (GET /metrics).
+
+    Exposes DB-derived gauges — gist delivery states, events published, active
+    subscriptions, applications, and action lifecycle counts — so a Prometheus
+    scraper can ingest them directly. The values are snapshots queried per scrape,
+    which is correct across multiple workers (they share the database) without any
+    per-process counter state.
+    """
+    executor = ctx.executor
+    x = executor.schema
+
+    counts_sql = f'SELECT {_COUNTS} FROM {x}gists g JOIN {x}subscriptions s ON g.subscription = s.subscription;'
+    published_sql = f'SELECT COUNT(*) FROM {x}events;'
+    active_subs_sql = f'SELECT COUNT(*) FROM {x}subscriptions WHERE active <> 0;'
+    apps_sql = f'SELECT COUNT(*) FROM {x}applications;'
+    actions_sql = f'SELECT status, COUNT(*) FROM {x}actions GROUP BY status;'
+    try:
+        crow = await executor.fetch(1).execute(counts_sql)
+        prow = await executor.fetch(1).execute(published_sql)
+        subrow = await executor.fetch(1).execute(active_subs_sql)
+        approw = await executor.fetch(1).execute(apps_sql)
+        arows = await executor.fetch(2).execute(actions_sql)
+    except Exception as exc:
+        logger.error('Could not render prometheus metrics: %s', exc)
+        res.status = HTTPStatus.SERVICE_UNAVAILABLE
+        res.headers = 'Content-Type', 'text/plain; charset=utf-8'
+        res.body = b'# amebo metrics temporarily unavailable\n'
+        return
+
+    delivered, failed, retrying, pending, total = (crow or (0, 0, 0, 0, 0))
+    delivered, failed, retrying, pending, total = (
+        int(delivered or 0), int(failed or 0), int(retrying or 0), int(pending or 0), int(total or 0))
+    finalized = delivered + failed
+    success_rate = round(delivered / finalized, 4) if finalized else 0
+
+    by_status = {'active': 0, 'deprecated': 0, 'retired': 0}
+    for status, count in (arows or []):
+        by_status[status or 'active'] = int(count or 0)
+
+    events = int(prow[0]) if prow and prow[0] is not None else 0
+    active_subs = int(subrow[0]) if subrow and subrow[0] is not None else 0
+    apps = int(approw[0]) if approw and approw[0] is not None else 0
+
+    lines = []
+    _family(lines, 'amebo_up', 'Whether the Amebo instance is serving (always 1 when scraped).', [(None, 1)])
+    _family(lines, 'amebo_gists', 'Webhook delivery records by status.', [
+        ({'status': 'delivered'}, delivered), ({'status': 'failed'}, failed),
+        ({'status': 'retrying'}, retrying), ({'status': 'pending'}, pending)])
+    _family(lines, 'amebo_gists_total', 'Total webhook delivery records.', [(None, total)])
+    _family(lines, 'amebo_delivery_success_rate', 'Delivered / (delivered + failed), 0..1.', [(None, success_rate)])
+    _family(lines, 'amebo_events_published', 'Total events published.', [(None, events)])
+    _family(lines, 'amebo_subscriptions_active', 'Active subscriptions.', [(None, active_subs)])
+    _family(lines, 'amebo_applications', 'Registered applications.', [(None, apps)])
+    _family(lines, 'amebo_actions', 'Actions by lifecycle status.',
+            [({'status': k}, v) for k, v in by_status.items()])
+
+    res.status = HTTPStatus.OK
+    res.headers = 'Content-Type', PROMETHEUS_CONTENT_TYPE
+    res.body = ('\n'.join(lines) + '\n').encode('utf-8')
