@@ -2,17 +2,26 @@
 {% macro scripts() %}
 <script>
     const FeedbackColors = {
-        'error': 'linear-gradient(to right, #bd4f6c 0%, #d7816a 74%)',
-        'success': 'linear-gradient(to right, #40b88a 0%, #179599 74%)',
-        'warning': 'linear-gradient(to right, #cca62b 0%, #cc8c2b 74%)',
+        'error': 'linear-gradient(135deg, #ff6b6b, #ee5a24)',
+        'success': 'linear-gradient(135deg, #51cf66, #20c997)',
+        'warning': 'linear-gradient(135deg, #fcc419, #fab005)',
+        'info': 'linear-gradient(135deg, #4dabf7, #228be6)',
     }
     const ShowFeedback = (type, text, dur, handler, closable) => {
-        const background = FeedbackColors[type];
-        const duration = dur || 5000;
+        const background = FeedbackColors[type] || FeedbackColors['info'];
+        const duration = dur || 3000;
         const close = closable || false;
         const onClick = handler || (() => {});
 
-        Toastify({text, duration, style: {background}, onClick, close}).showToast();
+        Toastify({
+            text,
+            duration,
+            style: { background, borderRadius: '8px', fontFamily: 'Inter, sans-serif', fontSize: '13px', padding: '10px 16px' },
+            onClick,
+            close,
+            gravity: 'top',
+            position: 'right'
+        }).showToast();
     }
 
     const xrequest = (url, data, vm) => {
@@ -36,43 +45,45 @@
             patch: _helper('patch')
         }
     }
-
-    const xwidgets = (url, option={}) => {
-        return superagent.post(url).set(
-            'X-Requested-With', option.identifier || 'viewmodel',
-        ).set(
-            'Content-Type', 'text/html'
-        ).send();
-    }
-
-    const xswidgets = (url, options) => {
-        return superagent.post(url).set(
-            'X-Requested-With', options.identifier
-        ).set(
-            'Content-Type', 'text/html'
-        ).send();
-    }
 </script>
 {% endmacro %}
 
 
 {% macro pagination() %}
-<div class="is-flex justify-content-space-between p-3" style="position: sticky; bottom: 1em;">
-    <section>
-        <button @click="pageDown" :disabled="isFiltering">&lt;</button>
-        <span class="font-size-xs font-800" x-text="isFiltering ? '...' : `Page ${page}`"></span>
-        <button @click="pageUp" :disabled="isFiltering">&gt;</button>
-        <button disabled>&nbsp;</button>
-        <input placeholder="page #" @keyup.enter.self="fetchAll()" x-model.number="page" :disabled="isFiltering">
-        <button @click="() => { fetchAll() }" :disabled="isFiltering">Go</button>
-    </section>
-    <section>
-        <select name="" x-model="pagination" x-effect="refreshPage()" :disabled="isFiltering">
-            <template x-for="paginate in [15, 25, 50, 100]">
-                <option x-text="paginate"></option>
+<div class="pagination-bar">
+    <div class="d-flex align-items-center gap-2">
+        <button class="btn-icon" @click="pageDown" :disabled="isFiltering || page <= 1"
+            title="Previous page">
+            <span class="material-icons" style="font-size: 18px;">chevron_left</span>
+        </button>
+
+        <input class="page-input" type="text"
+            x-model.number="page"
+            @keyup.enter="fetchAll()"
+            :disabled="isFiltering">
+
+        <button class="btn-icon" @click="pageUp" :disabled="isFiltering"
+            title="Next page">
+            <span class="material-icons" style="font-size: 18px;">chevron_right</span>
+        </button>
+
+        <button class="btn btn-sm btn-outline-secondary" @click="fetchAll()" :disabled="isFiltering"
+            style="font-size: 0.75rem; height: 32px;">
+            Go
+        </button>
+
+        <span class="text-sm ms-1" x-show="!isFiltering"
+            x-text="`Page ${page}`"></span>
+        <span class="text-sm ms-1" x-show="isFiltering">Filtered</span>
+    </div>
+
+    <div class="d-flex align-items-center gap-2">
+        <span class="text-sm">Rows:</span>
+        <select class="rows-select" x-model.number="pagination" x-effect="refreshPage()" :disabled="isFiltering">
+            <template x-for="count in [15, 25, 50, 100]">
+                <option :value="count" x-text="count"></option>
             </template>
         </select>
-        rows
-    </section>
+    </div>
 </div>
 {% endmacro %}

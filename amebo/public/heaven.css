@@ -30,9 +30,7 @@ textarea.text { border-color: #333; border-radius: 0px; outline: none !important
 .font-800 { font-weight: 800; }
 
 
-.pointer-events-all { pointer-events: all !important; }
-
-
+.text-overflow-ellipsis { text-overflow: ellipsis; }
 .typo.paragraph { font-size: 1.1em; }
 .typo.head { font-size: 1.4em !important; font-weight: 700; }
 
@@ -44,3 +42,10 @@ textarea.text { border-color: #333; border-radius: 0px; outline: none !important
 /* xtending & overriding of bulma */
 .modal-background { background-color: #27383fdb; }
 .modal-card-foot { border-radius: 0; padding: 1em 1.5em !important; }
+.overflow-hidden { overflow: hidden; }
+
+
+.pointer-events-all { pointer-events: all !important; }
+
+
+.white-space-nowrap { white-space: nowrap; }

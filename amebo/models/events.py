@@ -9,15 +9,20 @@ from pydantic import Field, field_validator
 
 class Events(Model):
     action: str = Field(...)
-    secret: str
-    event: Optional[int] = None
     deduper: str
     sleep_until: Optional[int]  # number of seconds to sleep until
+    metadata: Optional[Union[str, dict]] = Field(default_factory=dict)
     payload: Union[str, dict]
     timestamped: datetime = Field(default_factory=datetime.now)
 
     @field_validator('payload')
     def validate_payload(cls, value: Union[str, dict]):
+        if isinstance(value, dict): return value
+        return loads(value)
+    
+    @field_validator('metadata')
+    def validate_metadata(cls, value: Union[str, dict]):
+        if value is None or value == '': return {}
         if isinstance(value, dict): return value
         return loads(value)
 

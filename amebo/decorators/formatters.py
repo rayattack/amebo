@@ -8,13 +8,17 @@ from orjson import dumps
 from amebo.utils.structs import Lookup
 
 
+def default(obj):
+    return str(obj)
+
+
 def jsonify(func):
     @wraps(func)
     async def delegate(req, res, ctx: Context):
         if(iscoroutinefunction(func)): await func(req, res, ctx)
         else: func(req, res, ctx)
         res.headers = 'Content-Type', 'application/json'
-        res.body = dumps(res.body)
+        res.body = dumps(res.body, default=default)
     return delegate
 
 
@@ -42,7 +46,7 @@ def queries(schema: dict):
                 # dict.values might give you results out of order if key order changed
                 kind, default = param.get('kind'), param.get('default')
                 try: value = kind(req.queries.get(param))
-                except: value = default
+                except Exception: value = default
                 else: qp[param] = value
             ctx.keep('queryparams', qp)
             return await func(req, res, ctx)

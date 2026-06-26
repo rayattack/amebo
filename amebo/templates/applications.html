@@ -1,6 +1,7 @@
-{% extends 'abase.axml' %}
+{% extends 'clean_base.axml' %}
 {% from 'actions.axml' import pagination %}
-{% set modal_name = 'Applications' %}
+
+{% set modal_name = 'Provision Application' %}
 
 {% macro commander() %}
 {
@@ -8,194 +9,314 @@
     nameSearch: '',
     addressSearch: '',
     whenFilter: '',
+    generatedApiKey: null,
+    showApiKeyReveal: false,
+
     filterResults(){
-        let base = `/v1/applications?pagination=${pagination}`
-        if(this.nameSearch) base = `${base}&name=${this.nameSearch}`
-        if(this.addressSearch) base = `${base}&address=${this.addressSearch}`
-        if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
-        fetch(`${base}`)
-            .then(response => response.json())
+        let base = `/v1/applications?pagination=${this.pagination}&page=1`
+        if(this.nameSearch) base += `&name=${this.nameSearch}`
+        if(this.addressSearch) base += `&address=${this.addressSearch}`
+        if(this.whenFilter) base += `&timeline=${this.whenFilter}`
+        fetch(base)
+            .then(r => r.json())
             .then(data => {
                 isFiltering = true;
                 applications = data;
-            }).catch(err => {
-                ShowFeedback('error', 'Filter operation failed...')
-            })
-        },
-        clearFilter(){
-            this.nameSearch = ''; this.addressSearch = '';
-            this.whenFilter = '';
-            refreshPage();
-        },
-        checkDirty(){
-            if(this.nameSearch !== '' || this.addressSearch !== '' || this.whenFilter !== '') {
-                this.isFilterable = true;
-                return true;
-            }
-            this.isFilterable = false;
-            return false;
+            }).catch(err => ShowFeedback('error', 'Filter operation failed'))
+    },
+
+    clearFilter(){
+        this.nameSearch = '';
+        this.addressSearch = '';
+        this.whenFilter = '';
+        isFiltering = false;
+        refreshPage();
+    },
+
+    checkDirty(){
+        this.isFilterable = (
+            this.nameSearch !== '' ||
+            this.addressSearch !== '' ||
+            this.whenFilter !== ''
+        );
+        return this.isFilterable;
+    },
+
+    async toggleActive(appName){
+        try {
+            const res = await superpatch(`/v1/applications/${appName}`).send({});
+            $dispatch('refresher');
+            supertoast('success', `Application ${res.body.active ? 'activated' : 'deactivated'}`);
+        } catch(err) {
+            supertoast('error', err.response?.body?.error || 'Failed to toggle status');
         }
+    },
+
+    async regenerateKey(appName){
+        if(!confirm(`Regenerate API key for ${appName}? The old key will stop working immediately.`)) return;
+        try {
+            const res = await superpost(`/v1/applications/${appName}/apikey`).send({});
+            this.generatedApiKey = res.body.apikey;
+            this.showApiKeyReveal = true;
+        } catch(err) {
+            supertoast('error', err.response?.body?.error || 'Failed to regenerate API key');
+        }
+    },
+
+    copyApiKey(){
+        if(this.generatedApiKey){
+            navigator.clipboard.writeText(this.generatedApiKey);
+            supertoast('success', 'API key copied to clipboard');
+        }
+    },
+
+    dismissApiKey(){
+        this.generatedApiKey = null;
+        this.showApiKeyReveal = false;
     }
+}
 {% endmacro %}
+
 
 {% block easel %}
 <section x-data="{{ controller('applications') }}">
-    <div class="px-3">
-        <div><span class="font-800 pr-3">Filters:</span></div>
-        <div class="pb-3" x-data="{{ commander() }}" x-effect="checkDirty">
-            <span class="display-inline-block">
-                <input
-                    type="text"
-                    placeholder="search by application name..."
-                    class="w-20em"
-                    x-model="nameSearch"
-                />
-                <button disabled>&nbsp;</button>
-                <input
-                    type="text"
-                    class="w-20em"
-                    placeholder="with application address"
-                    x-model="addressSearch"
-                />
-                <input type="text" placeholder="search disabled..." disabled />
-                <select x-model="whenFilter">
-                    <option>Select Date</option>
-                    <template
-                        x-for="[val, txt] in Object.entries({today: 'Today', week: 'This Week', month: 'This Month'})"
-                        :key="val"
-                    >
-                        <option :value="val" x-text="txt"></option>
-                    </template>
-                </select>
-                <button @click="filterResults" :disabled="! isFilterable">
-                    <ion-icon name="search" class="font-size-xs"></ion-icon>
-                    search
-                </button>
-                <button disabled>&nbsp;</button>
-                <button @click.self="clearFilter" :disabled="! isFiltering">
-                    clear filter
-                    <ion-icon
-                        name="leaf-outline"
-                        class="font-size-xs"
-                    ></ion-icon>
-                </button>
-            </span>
-        </div>
-    </div>
+    <div x-data="{{ commander() }}" x-effect="checkDirty">
 
-    <div class="easel" x-init="calculateHeight($el, 10)">
-        <table class="table is-striped is-fullwidth is-hoverable">
-            <thead>
-                <th>Name</th>
-                <th>Address</th>
-                <th>Pass phrase</th>
-                <th>Timestamped</th>
-            </thead>
-            <tbody
-                @refresher.window="refreshPage"
-                x-init="() => { calculateHeight($el, 100); }"
-            >
-                <template x-for="application in applications">
-                    <tr>
-                        <td x-text="application.application"></td>
-                        <td x-text="application.address"></td>
-                        <td x-text="application.secret"></td>
-                        <td x-text="application.timestamped"></td>
-                    </tr>
-                </template>
-            </tbody>
-            <tfoot style="position: sticky; bottom: 0">
-                <th>Name</th>
-                <th>Address</th>
-                <th>Pass phrase</th>
-                <th>Timestamped</th>
-            </tfoot>
-        </table>
-        {{ pagination() }}
+        <div class="page-content-scroll">
+            <div class="page-header d-flex align-items-start justify-content-between">
+                <div>
+                    <h1 class="page-title">Applications</h1>
+                    <p class="page-subtitle">Registered microservices and their endpoints</p>
+                </div>
+                <div class="loading-spinner" x-show="loading" x-transition>
+                    <div class="spinner-border spinner-border-sm"></div>
+                    <span>Loading...</span>
+                </div>
+            </div>
+
+            <div class="filter-bar">
+                <div class="input-icon">
+                    <span class="material-icons">layers</span>
+                    <input class="form-control" type="text" placeholder="Application name..."
+                        x-model="nameSearch" style="width: 200px;">
+                </div>
+                <div class="input-icon">
+                    <span class="material-icons">link</span>
+                    <input class="form-control" type="text" placeholder="Address..."
+                        x-model="addressSearch" style="width: 220px;">
+                </div>
+                <select class="form-select" x-model="whenFilter" style="width: 140px;">
+                    <option value="">Any Time</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                </select>
+                <button class="btn btn-dark btn-sm d-inline-flex align-items-center gap-1"
+                    @click="filterResults" :disabled="!isFilterable">
+                    <span class="material-icons" style="font-size: 16px;">search</span>
+                    Search
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" @click="clearFilter"
+                    :disabled="!isFiltering" x-show="isFiltering" x-transition>
+                    Clear
+                </button>
+            </div>
+        </div>
+
+        <!-- API Key Reveal Banner -->
+        <div x-show="showApiKeyReveal" x-transition class="alert alert-warning mx-3 mt-2 mb-0" role="alert">
+            <div class="d-flex align-items-start gap-2">
+                <span class="material-icons" style="font-size: 20px;">vpn_key</span>
+                <div class="flex-grow-1">
+                    <strong>API Key Generated</strong>
+                    <p class="mb-1 text-sm">Copy this key now. It will not be shown again.</p>
+                    <code class="d-block p-2 bg-dark text-light rounded font-mono text-sm"
+                        style="word-break: break-all;" x-text="generatedApiKey"></code>
+                </div>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-sm btn-outline-dark d-inline-flex align-items-center gap-1" @click="copyApiKey">
+                        <span class="material-icons" style="font-size: 16px;">content_copy</span>
+                        Copy
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" @click="dismissApiKey">Dismiss</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="page-table-area">
+            <div class="data-table-wrapper" x-init="fetchAll()">
+                <div class="data-table-scroll">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 20%">Name</th>
+                                <th style="width: 32%">Address</th>
+                                <th style="width: 10%">Status</th>
+                                <th style="width: 18%">Timestamp</th>
+                                <th style="width: 20%">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody @refresher.window="refreshPage">
+                            <template x-for="app in applications" :key="app.application">
+                                <tr>
+                                    <td>
+                                        <span class="fw-medium" x-text="app.application"></span>
+                                    </td>
+                                    <td>
+                                        <code class="font-mono text-sm" x-text="app.address"></code>
+                                    </td>
+                                    <td>
+                                        <span class="badge"
+                                            :class="app.active ? 'bg-success' : 'bg-secondary'"
+                                            x-text="app.active ? 'Active' : 'Inactive'"></span>
+                                    </td>
+                                    <td>
+                                        <span class="text-muted-custom text-sm" x-text="app.timestamped"></span>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex gap-1">
+                                            <button class="btn-action" @click="toggleActive(app.application)"
+                                                :title="app.active ? 'Deactivate' : 'Activate'">
+                                                <span class="material-icons" style="font-size: 16px;"
+                                                    x-text="app.active ? 'pause_circle' : 'play_circle'"></span>
+                                            </button>
+                                            <button class="btn-action" @click="regenerateKey(app.application)"
+                                                title="Regenerate API Key">
+                                                <span class="material-icons" style="font-size: 16px;">vpn_key</span>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                            <template x-if="applications.length === 0 && !loading">
+                                <tr>
+                                    <td colspan="5">
+                                        <div class="empty-state">
+                                            <span class="material-icons">layers</span>
+                                            <p>No applications registered</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+                {{ pagination() }}
+            </div>
+        </div>
+
     </div>
 </section>
 {% endblock %}
 
+
 {% block wizard %}
-<span
-    x-data="{
+<span x-data="{
     application: '',
     port: '',
     scheme: 'http',
     address: '',
-    secret: '',
+    createdApiKey: null,
+
     resetForm(){
-        this.name = '';
-        this.secret = '';
+        this.application = '';
         this.address = '';
+        this.port = '';
+        this.createdApiKey = null;
     },
+
     get Address(){
-        let suffix = '';
-        if(this.port.length) suffix = `:${this.port}`
+        let suffix = this.port.length ? `:${this.port}` : '';
         return `${this.scheme}://${this.address}${suffix}`;
     },
+
     saveApplication(){
         superpost('/v1/applications').send({
             application: this.application,
-            address: this.Address,
-            secret: this.secret
+            address: this.Address
         }).then(res => {
-            supertoast('info', 'Application created');
-            this.resetForm();
+            this.createdApiKey = res.body.apikey;
             $dispatch('refresher');
-            showModalContent = false;
         }).catch(err => {
-            supertoast('error', err.response.body.error);
+            supertoast('error', err.response?.body?.error || 'Failed to create application');
         })
+    },
+
+    copyCreatedKey(){
+        if(this.createdApiKey){
+            navigator.clipboard.writeText(this.createdApiKey);
+            supertoast('success', 'API key copied to clipboard');
+        }
+    },
+
+    closeAndReset(){
+        this.resetForm();
+        showModal = false;
     }
-}"
->
-    <div class="modal-card-body p-5">
-        <div class="brick">
-            <label class="font-800 mr-2">Name: </label>
-            <input
-                type="text"
-                class="w-30em input"
-                placeholder="Enter a name for your application..."
-                x-model="application"
-            />
-        </div>
-        <div class="brick bricks">
-            <label class="font-800 mr-2">Address: </label>
-            <div>
-                <div class="select">
-                    <select x-model="scheme">
-                        <option value="http">HTTP</option>
-                        <option value="https">HTTPS</option>
-                    </select>
+}">
+    <!-- Creation form -->
+    <template x-if="!createdApiKey">
+        <div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label-sm">Application Name</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-transparent border-end-0">
+                            <span class="material-icons text-muted" style="font-size: 18px;">layers</span>
+                        </span>
+                        <input type="text" class="form-control border-start-0"
+                            placeholder="e.g. paymentservice" x-model="application">
+                    </div>
                 </div>
-                <input
-                    type="text"
-                    class="w-30em input"
-                    placeholder="Enter ip/http address for your application..."
-                    x-model="address"
-                />
-                <input
-                    type="text"
-                    class="input width-5em"
-                    placeholder="Port"
-                    x-model="port"
-                />
+
+                <div class="mb-0">
+                    <label class="form-label-sm">Address</label>
+                    <div class="d-flex gap-2">
+                        <select class="form-select" x-model="scheme" style="width: 100px;">
+                            <option value="http">HTTP</option>
+                            <option value="https">HTTPS</option>
+                        </select>
+                        <input type="text" class="form-control" placeholder="host or IP address..."
+                            x-model="address">
+                        <input type="text" class="form-control" placeholder="Port" x-model="port"
+                            style="width: 90px;">
+                    </div>
+                    <div class="form-text font-mono text-sm mt-1" x-text="Address"></div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-outline-secondary" @click="showModal = false">Cancel</button>
+                <button class="btn btn-sm btn-dark d-inline-flex align-items-center gap-1" @click="saveApplication">
+                    <span class="material-icons" style="font-size: 16px;">save</span>
+                    Provision Application
+                </button>
             </div>
         </div>
-        <div class="brick">
-            <label class="font-800 mr-2">Pass phrase: </label>
-            <textarea
-                class="mw-40em text"
-                rows="10"
-                x-model="secret"
-            ></textarea>
+    </template>
+
+    <!-- API Key reveal after creation -->
+    <template x-if="createdApiKey">
+        <div>
+            <div class="modal-body">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <span class="material-icons text-success" style="font-size: 24px;">check_circle</span>
+                    <strong>Application provisioned successfully</strong>
+                </div>
+                <p class="text-sm mb-2">Copy the API key below and provide it to the application owner. This key will not be shown again.</p>
+                <div class="position-relative">
+                    <code class="d-block p-3 bg-dark text-light rounded font-mono text-sm"
+                        style="word-break: break-all;" x-text="createdApiKey"></code>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-dark d-inline-flex align-items-center gap-1" @click="copyCreatedKey">
+                    <span class="material-icons" style="font-size: 16px;">content_copy</span>
+                    Copy API Key
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" @click="closeAndReset">Done</button>
+            </div>
         </div>
-    </div>
-    <div class="modal-card-foot">
-        <button class="button primary" @click="saveApplication">
-            save application
-        </button>
-    </div>
+    </template>
 </span>
 {% endblock %}

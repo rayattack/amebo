@@ -1,19 +1,39 @@
+import logging
 from os import environ
 from sqlite3 import Connection
 
 from bcrypt import gensalt, hashpw
 from heaven import Application, Response
 
+from amebo.constants.literals import AMEBO_SECRET
+
+logger = logging.getLogger('amebo.security')
+
 
 async def cors(req, res: Response, ctx):
-    allowed: str = req.headers.get('referer') or req.headers.get('X-Hosted') or ''
     hx_req_headers = 'HX-Boosted, HX-Current-URL, HX-History-Restore-Request, HX-Prompt, HX-Request, HX-Target, HX-Trigger-Name, HX-Trigger'
     hx_res_headers = 'HX-Location, HX-Push-Url, HX-Redirect, HX-Refresh, HX-Replace-Url, HX-Reswap, HX-Retarget, HX-Reselect, HX-Trigger, HX-Trigger-After-Settle, HX-Trigger-After-Swap'
-    res.headers = 'Access-Control-Allow-Origin', allowed.strip('/')
-    res.headers = 'Access-Control-Allow-Credentials', 'true'
-    res.headers = 'Access-Control-Allow-Headers', f'Accept, Content-Type, Content-Disposition, Authorization, Authentication, Vary, Date, Accept-Encoding, X-CSRF-Token, X-Hint, X-Hosted, Set-Cookie, X-Form-ID, {hx_req_headers}'
-    res.headers = 'Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-    res.headers = 'Access-Control-Expose-Headers', f'X-Hint, X-Hosted, X-Other, Set-Cookie, X-Form-ID, HX-History-Restore-Request, {hx_res_headers}'
+    common_headers = f'Accept, Content-Type, Content-Disposition, Authorization, Authentication, Vary, Date, Accept-Encoding, X-CSRF-Token, X-Hint, X-Hosted, Set-Cookie, X-Form-ID, X-Amebo-Signature, {hx_req_headers}'
+
+    # API routes: signature-based auth, no cookies needed — allow any origin
+    if req.url.startswith('/v1/') or req.url.startswith('/v8/'):
+        res.headers = 'Access-Control-Allow-Origin', '*'
+        res.headers = 'Access-Control-Allow-Headers', common_headers
+        res.headers = 'Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+        res.headers = 'Access-Control-Expose-Headers', 'X-Hint, X-Hosted, X-Other, X-Amebo-Signature'
+    else:
+        # UI routes: cookie-based auth, restrict to same-origin
+        origin = req.headers.get('origin') or ''
+        host = req.headers.get('host') or ''
+        # only allow same-origin requests for cookie-authenticated UI routes
+        if origin and host and origin.rstrip('/').endswith(host):
+            res.headers = 'Access-Control-Allow-Origin', origin.rstrip('/')
+        else:
+            res.headers = 'Access-Control-Allow-Origin', f'{req.scheme}://{host}' if host else ''
+        res.headers = 'Access-Control-Allow-Credentials', 'true'
+        res.headers = 'Access-Control-Allow-Headers', common_headers
+        res.headers = 'Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+        res.headers = 'Access-Control-Expose-Headers', f'X-Hint, X-Hosted, X-Other, Set-Cookie, X-Form-ID, HX-History-Restore-Request, {hx_res_headers}'
 
 
 async def upsudo(app: Application) -> str:
@@ -21,7 +41,6 @@ async def upsudo(app: Application) -> str:
     username = environ.get('AMEBO_USERNAME')
     pwd = environ.get('AMEBO_PASSWORD')
     password = hashpw(pwd.encode(), gensalt())
-    print("Administrator Password: ", pwd)
 
     # credentials table dropped every time so this is possible, what of producer credentials created after app start?
     # this has the potential to overwrite admin credentials if updated by admin after start? So document
@@ -35,10 +54,10 @@ async def upsudo(app: Application) -> str:
             ''', username, password.decode())
         else: db.execute('INSERT INTO credentials VALUES(?, ?);', (username, password.decode()))
     except Exception as exc:
-        print("SUDO Credentials not created....")
-        print('*' * 100, f': {exc}')
+        logger.error('SUDO credentials not created: %s', exc)
 
 
 def upsecret(app: Application):
-    if not environ.get('AMEBO_SECRET'):
-        print('Deterministic dev secret key is: ', app.CONFIG('AMEBO_SECRET'))
+    secret = environ.get(AMEBO_SECRET)
+    app.keep(AMEBO_SECRET, secret)
+    logger.info('Amebo secret loaded')

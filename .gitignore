@@ -10,3 +10,11 @@ __pycache__/
 dist/
 
 site/
+amebo.json
+
+# test / coverage / type-check artifacts
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.mypy_cache/

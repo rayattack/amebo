@@ -1,40 +1,35 @@
-{% extends 'abase.axml' %}
-
-
+{% extends 'clean_base.axml' %}
 {% from 'actions.axml' import pagination %}
 
-
-{% set modal_name = 'Actions' %}
-
+{% set modal_name = 'Create New Action' %}
 
 {% macro commander() %}
 {
     isFilterable: false,
-    oldPagination: pagination,
-
     actionSearch: '',
+    familySearch: '',
     applicationSearch: '',
     schemataSearch: '',
     whenFilter: '',
 
     filterResults(){
-        let base = `/v1/actions?pagination=${100}&page=${page}`
-        if(this.actionSearch) base = `${base}&action=${this.actionSearch}`
-        if(this.applicationSearch) base = `${base}&application=${this.applicationSearch}`
-        if(this.schemataSearch) base = `${base}&schemata=${this.schemataSearch}`
-        if(this.whenFilter) base = `${base}&timeline=${this.whenFilter}`
-        fetch(`${base}`)
-        .then(response => response.json())
-        .then(data => {
-            isFiltering = true;
-            actions = data;
-        }).catch(err => {
-            ShowFeedback('error', 'Filter operation failed...')
-        })
+        let base = `/v1/actions?pagination=${this.pagination}&page=1`
+        if(this.actionSearch) base += `&action=${this.actionSearch}`
+        if(this.familySearch) base += `&family=${this.familySearch}`
+        if(this.applicationSearch) base += `&application=${this.applicationSearch}`
+        if(this.schemataSearch) base += `&schemata=${this.schemataSearch}`
+        if(this.whenFilter) base += `&timeline=${this.whenFilter}`
+        fetch(base)
+            .then(r => r.json())
+            .then(data => {
+                isFiltering = true;
+                actions = data;
+            }).catch(err => ShowFeedback('error', 'Filter operation failed'))
     },
 
     clearFilter(){
         this.actionSearch = '';
+        this.familySearch = '';
         this.applicationSearch = '';
         this.schemataSearch = '';
         this.whenFilter = '';
@@ -43,14 +38,14 @@
     },
 
     checkDirty(){
-        if(this.actionSearch !== '' ||
-            this.applicationSearch !== '' || this.schemataSearch !== '' || this.whenFilter !== ''
-        ) {
-            this.isFilterable = true;
-            return true;
-        }
-        this.isFilterable = false;
-        return false;
+        this.isFilterable = (
+            this.actionSearch !== '' ||
+            this.familySearch !== '' ||
+            this.applicationSearch !== '' ||
+            this.schemataSearch !== '' ||
+            this.whenFilter !== ''
+        );
+        return this.isFilterable;
     }
 }
 {% endmacro %}
@@ -58,96 +53,278 @@
 
 {% block easel %}
 <section x-data="{{ controller('actions') }}">
+
+    <!-- Preview Mode -->
     <template x-if="previewing">
-        <div class="columns" x-data="{
-            readOnlyIDE: null
-        }">
-            <aside class="column is-4 px-5">
-                <button class="button is-danger is-small mb-3" @click="previewing = null">Back To Actions</button>
-                <div class="display-flex space-between display-field py-1">
-                    <span class="label">Action</span>
-                    <div x-text="previewing.action"></div>
+        <div x-data="{
+            readOnlyIDE: null,
+            isAdmin: {{ 'true' if ctx.metadata and ctx.metadata.scheme == 'password' else 'false' }},
+            deleting: false,
+            deleteAction(){
+                const name = previewing.action;
+                const confirmed = confirm(
+                    `Delete action '${name}'?\n\n` +
+                    `This will permanently remove the action along with ALL of its events, subscriptions, gists, and redactions. This cannot be undone.`
+                );
+                if(!confirmed) return;
+                this.deleting = true;
+                fetch(`/v1/actions/${encodeURIComponent(name)}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                }).then(async r => {
+                    const body = await r.json().catch(() => ({}));
+                    if(!r.ok) throw body;
+                    ShowFeedback('success', `Action '${name}' deleted`);
+                    previewing = null;
+                    $dispatch('refresher');
+                }).catch(err => {
+                    ShowFeedback('error', err?.error || 'Failed to delete action');
+                }).finally(() => { this.deleting = false; });
+            }
+        }" class="preview-layout">
+            <!-- Top: back button + title -->
+            <div class="page-content-scroll pb-0">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                        @click="previewing = null">
+                        <span class="material-icons" style="font-size: 16px;">arrow_back</span>
+                        Back
+                    </button>
+                    <h1 class="page-title mb-0" x-text="previewing.action"></h1>
+                    <span class="badge bg-secondary bg-opacity-10 text-secondary"
+                        x-text="previewing.application"></span>
+                    <span class="badge"
+                        :class="previewing.version ? 'bg-primary bg-opacity-10 text-primary' : 'bg-secondary bg-opacity-10 text-secondary'"
+                        x-text="previewing.version || 'base'"></span>
+                    <span class="badge text-capitalize"
+                        :class="{
+                            'bg-success bg-opacity-10 text-success': previewing.status === 'active',
+                            'bg-warning bg-opacity-10 text-warning': previewing.status === 'deprecated',
+                            'bg-secondary bg-opacity-10 text-secondary': previewing.status === 'retired' || !previewing.status
+                        }"
+                        x-text="previewing.status || '—'"></span>
+                    <template x-if="isAdmin">
+                        <button class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1 ms-auto"
+                            @click="deleteAction" :disabled="deleting">
+                            <span class="material-icons" style="font-size: 16px;">delete_forever</span>
+                            <span x-text="deleting ? 'Deleting...' : 'Delete Action'"></span>
+                        </button>
+                    </template>
                 </div>
-                <div class="display-flex space-between display-field py-1">
-                    <span class="label">Application</span>
-                    <div x-text="previewing.application"></div>
+            </div>
+
+            <!-- Cards row filling remaining height -->
+            <div class="preview-cards">
+                <!-- Detail card -->
+                <div class="detail-panel preview-detail-card">
+                    <div class="detail-panel-header">
+                        <h6 class="fw-bold mb-0">Details</h6>
+                    </div>
+                    <div class="detail-panel-body">
+                        <div class="detail-field">
+                            <span class="field-label">Application</span>
+                            <span class="field-value" x-text="previewing.application"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Family</span>
+                            <span class="field-value font-mono" x-text="previewing.family || '—'"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Version</span>
+                            <span class="field-value" x-text="previewing.version || 'base (unversioned)'"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Status</span>
+                            <span class="field-value text-capitalize" x-text="previewing.status || '—'"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Compatibility</span>
+                            <span class="field-value" x-text="previewing.compatibility || '—'"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Successor</span>
+                            <span class="field-value font-mono" x-text="previewing.successor || '—'"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Created</span>
+                            <span class="field-value" x-text="previewing.timestamped"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Events</span>
+                            <span class="field-value" x-text="`${previewing.successful || 0} / ${previewing.tally || 0}`"></span>
+                        </div>
+                        <div class="detail-field">
+                            <span class="field-label">Subscribers</span>
+                            <span class="field-value" x-text="previewing.subscribers || 0"></span>
+                        </div>
+                    </div>
+                    <div class="detail-panel-footer">
+                        <span class="text-xs text-muted-custom"
+                            x-text="`${prettyJson(previewing.schemata || {}).split('\\n').length} lines · ${prettyJson(previewing.schemata || {}).length} chars`"></span>
+                    </div>
                 </div>
-                <div class="display-flex space-between display-field py-1">
-                    <span class="label">Created At</span>
-                    <div x-text="previewing.timestamped"></div>
+
+                <!-- Schema card filling remaining width + full height -->
+                <div class="detail-panel preview-schema-card">
+                    <div class="detail-panel-header">
+                        <h6 class="fw-bold mb-0">JSON Schema</h6>
+                        <button class="btn-action"
+                            @click="navigator.clipboard.writeText(typeof previewing.schemata === 'string' ? previewing.schemata : prettyJson(previewing.schemata || {})); ShowFeedback('success', 'Copied to clipboard')">
+                            <span class="material-icons">content_copy</span>
+                            Copy
+                        </button>
+                    </div>
+                    <div class="preview-editor-ace" x-init="() => {
+                        readOnlyIDE = ace.edit($el);
+                        readOnlyIDE.session.setMode('ace/mode/json');
+                        readOnlyIDE.setTheme(darkMode ? 'ace/theme/one_dark' : 'ace/theme/chrome');
+                        readOnlyIDE.setOptions({
+                            readOnly: true,
+                            fontSize: 13,
+                            fontFamily: 'JetBrains Mono, SF Mono, Fira Code, monospace',
+                            showPrintMargin: false,
+                            highlightActiveLine: false,
+                            highlightGutterLine: false,
+                            showGutter: true,
+                            displayIndentGuides: true,
+                            tabSize: 2,
+                            wrap: false
+                        });
+                        const val = typeof previewing.schemata === 'string'
+                            ? previewing.schemata
+                            : prettyJson(previewing.schemata || {});
+                        readOnlyIDE.setValue(val);
+                        readOnlyIDE.clearSelection();
+                        readOnlyIDE.gotoLine(1);
+                    }"></div>
                 </div>
-                <div class="display-flex space-between display-field py-1">
-                    <span class="label"># of Events</span>
-                    <div x-text="`${previewing.successful || 0} / ${previewing.tally || 0}`"></div>
-                </div>
-                <div class="display-flex space-between display-field py-1">
-                    <span class="label"># of Subscribers</span>
-                    <div x-text="`${previewing.subscribers || 0}`"></div>
-                </div>
-            </aside>
-            <aside class="column">
-                <div x-init="() => {
-                    calculateHeight($el, 50);
-                    readOnlyIDE = ace.edit($el);
-                    readOnlyIDE.session.setMode('ace/mode/json');
-                    readOnlyIDE.setValue(previewing.schemata);
-                    readOnlyIDE.setReadOnly(true);
-                }"></div>
-            </aside>
+            </div>
         </div>
     </template>
+
+    <!-- List Mode -->
     <template x-if="!previewing">
-        <aside>
-            <div class="px-3"><span class="font-800">Filters:</span></div>
-            <div class="px-3 pb-2" x-data="{{ commander() }}" x-effect="checkDirty">
-                <span class="display-inline-block">
-                    <input type="text" placeholder="action name..." style="width: 14em" x-model="actionSearch" />
-                    <input type="text" placeholder="application..." style="width: 20em" x-model="applicationSearch">
-                    <input type="text" placeholder="search in json schema payload..." style="width: 25em" x-model="schemataSearch">
-                    <select x-model="whenFilter">
-                        <template x-for="[val, txt] in Object.entries({day: 'Today', week: 'This Week', month: 'This Month'})" :key="val">
-                            <option :value="val" x-text="txt" :selected="val === whenFilter"></option>
-                        </template>
+        <div x-data="{{ commander() }}" x-effect="checkDirty">
+
+            <div class="page-content-scroll">
+                <div class="page-header d-flex align-items-start justify-content-between">
+                    <div>
+                        <h1 class="page-title">Actions</h1>
+                        <p class="page-subtitle">Event type definitions and JSON schemas</p>
+                    </div>
+                    <div class="loading-spinner" x-show="loading" x-transition>
+                        <div class="spinner-border spinner-border-sm"></div>
+                        <span>Loading...</span>
+                    </div>
+                </div>
+
+                <div class="filter-bar">
+                    <div class="input-icon">
+                        <span class="material-icons">bolt</span>
+                        <input class="form-control" type="text" placeholder="Action name..." x-model="actionSearch"
+                            style="width: 180px;">
+                    </div>
+                    <div class="input-icon">
+                        <span class="material-icons">account_tree</span>
+                        <input class="form-control" type="text" placeholder="Family..." x-model="familySearch"
+                            style="width: 170px;">
+                    </div>
+                    <div class="input-icon">
+                        <span class="material-icons">layers</span>
+                        <input class="form-control" type="text" placeholder="Application..." x-model="applicationSearch"
+                            style="width: 200px;">
+                    </div>
+                    <div class="input-icon">
+                        <span class="material-icons">data_object</span>
+                        <input class="form-control" type="text" placeholder="Search in schema..."
+                            x-model="schemataSearch" style="width: 220px;">
+                    </div>
+                    <select class="form-select" x-model="whenFilter" style="width: 140px;">
+                        <option value="">Any Time</option>
+                        <option value="today">Today</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
                     </select>
-                    <button @click="filterResults" :disabled="! isFilterable">
-                        <img src="/public/icons/search.svg" class="svgxs" />
-                        search
+                    <button class="btn btn-dark btn-sm d-inline-flex align-items-center gap-1"
+                        @click="filterResults" :disabled="!isFilterable">
+                        <span class="material-icons" style="font-size: 16px;">search</span>
+                        Search
                     </button>
-                    <button disabled>&nbsp;</button>
-                    <button @click.self="clearFilter" :disabled="! isFiltering">
-                        clear filter
-                        <img src="/public/icons/leaf-outline.svg" class="svgxs" />
+                    <button class="btn btn-sm btn-outline-secondary" @click="clearFilter"
+                        :disabled="!isFiltering" x-show="isFiltering" x-transition>
+                        Clear
                     </button>
-                </span>
+                </div>
             </div>
-            <div class="easel" x-init="fetchAll">
-                <table class="table is-striped is-fullwidth is-hoverable paginated">
-                    <thead>
-                        <th style="width: 22%">Action</th>
-                        <th style="width: 20%">Application</th>
-                        <th>Schema</th>
-                        <th>Timestamped</th>
-                    </thead>
-                    <tbody @refresher.window="refreshPage"  x-init="calculateHeight($el, 110);">
-                        <template x-for="action in actions">
-                            <tr class="cursor-pointer" @click="previewing = action">
-                                <td x-text="action.action" style="width: 22%"></td>
-                                <td x-text="action.application" style="width: 20%"></td>
-                                <td x-text="`${JSON.stringify(action.schemata, undefined, 2).length} characters`"></td>
-                                <td x-text="action.timestamped"></td>
-                            </tr>
-                        </template>
-                    </tbody>
-                    <tfoot>
-                        <th>Action</th>
-                        <th>Application</th>
-                        <th>Schema</th>
-                        <th>Timestamped</th>
-                    </tfoot>
-                </table>
+
+            <div class="page-table-area">
+                <div class="data-table-wrapper" x-init="fetchAll()">
+                    <div class="data-table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 22%">Action</th>
+                                    <th style="width: 16%">Family</th>
+                                    <th style="width: 8%">Version</th>
+                                    <th style="width: 10%">Status</th>
+                                    <th style="width: 14%">Application</th>
+                                    <th>Schema</th>
+                                    <th style="width: 15%">Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody @refresher.window="refreshPage">
+                                <template x-for="action in actions" :key="action.action">
+                                    <tr class="cursor-pointer" @click="previewing = action">
+                                        <td>
+                                            <span class="fw-medium" x-text="action.action"></span>
+                                        </td>
+                                        <td>
+                                            <span class="text-muted-custom text-sm font-mono" x-text="action.family || '—'"></span>
+                                        </td>
+                                        <td>
+                                            <span class="badge"
+                                                :class="action.version ? 'bg-primary bg-opacity-10 text-primary' : 'bg-secondary bg-opacity-10 text-secondary'"
+                                                x-text="action.version || 'base'"></span>
+                                        </td>
+                                        <td>
+                                            <span class="badge text-capitalize"
+                                                :class="{
+                                                    'bg-success bg-opacity-10 text-success': action.status === 'active',
+                                                    'bg-warning bg-opacity-10 text-warning': action.status === 'deprecated',
+                                                    'bg-secondary bg-opacity-10 text-secondary': action.status === 'retired' || !action.status
+                                                }"
+                                                x-text="action.status || '—'"></span>
+                                        </td>
+                                        <td>
+                                            <span class="tag-id" x-text="action.application"></span>
+                                        </td>
+                                        <td>
+                                            <span class="text-muted-custom text-sm"
+                                                x-text="`${JSON.stringify(action.schemata || {}, null, 2).length} characters`"></span>
+                                        </td>
+                                        <td>
+                                            <span class="text-muted-custom text-sm" x-text="action.timestamped"></span>
+                                        </td>
+                                    </tr>
+                                </template>
+                                <template x-if="actions.length === 0 && !loading">
+                                    <tr>
+                                        <td colspan="7">
+                                            <div class="empty-state">
+                                                <span class="material-icons">bolt</span>
+                                                <p>No actions found</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                    {{ pagination() }}
+                </div>
             </div>
-            {{ pagination() }}
-        </aside>
+
+        </div>
     </template>
 </section>
 {% endblock %}
@@ -158,81 +335,73 @@
     ide: null,
     applications: [],
     application: '',
-    schema: '',
     action: '',
-    secret: '',
+
     fetchApplications(){
-        fetch('/v1/applications', {
-            method: 'GET'
-        }).then(res => {
-            if(res.status !== 200) throw Error();
-            return res.json()
-        }).then(data => {
-            this.applications = data;
-        }).catch(err => {
-        })
+        fetch('/v1/applications')
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(data => this.applications = data)
+            .catch(() => {})
     },
+
     resetForm(){
         this.application = '';
-        this.secret = '';
         this.action = '';
-        this.schema = '';
+        if(this.ide) this.ide.setValue('');
     },
+
     saveAction(){
         superpost('/v1/actions').send({
             application: this.application,
             schemata: this.ide.getValue(),
-            secret: this.secret,
             action: this.action
         }).then(res => {
-            ShowFeedback('info', 'Action created')
+            ShowFeedback('success', 'Action created');
             this.resetForm();
             $dispatch('refresher');
-            showModalContent = false;
+            showModal = false;
         }).catch(err => {
-            supertoast('error', err.response.body.error)
+            supertoast('error', err.response?.body?.error || 'Failed to create action');
         })
     }
 }">
-    <div class="modal-card-body p-5">
-        <div class="brick vertical-aligns-middle">
-            <label class="font-800 mr-2 vertical-aligns-middle">Action Name: </label>
-            <input type="text" class="w-30em input" placeholder="Enter a name for your action..." x-model="action">
-        </div>
-        <div class="brick vertical-aligns-middle">
-            <label class="font-800 mr-2">Application: </label>
-            <div class="select">
-                <select x-model="application" x-init="fetchApplications">
-                    <option>Select an Application</option>
-                    <template x-for="application in applications">
-                        <option :value="application.application" x-text="application.application"></option>
-                    </template>
-                </select>
-            </div>
-        </div>
-        <div class="brick vertical-aligns-middle">
-            <label class="font-800 mr-2">secret: </label>
-            <div class="control display-inline-block has-icons-right" x-data="{
-                visible: false
-            }">
-                <input :type="visible ? 'text' : 'password'" class="w-30em input" placeholder="Enter secret for application..." x-model="secret">
-                <span class="icon is-right" @click="visible = !visible">
-                    <img :src="`/public/icons/${visible ? 'eye' : 'neye'}.svg`" class="pointer-events-all"></img>
+    <div class="modal-body">
+        <div class="mb-3">
+            <label class="form-label-sm">Action Name</label>
+            <div class="input-group">
+                <span class="input-group-text bg-transparent border-end-0">
+                    <span class="material-icons text-muted" style="font-size: 18px;">bolt</span>
                 </span>
+                <input type="text" class="form-control border-start-0" placeholder="e.g. user.created"
+                    x-model="action">
             </div>
         </div>
-        <div class="brick">
-            <label class="font-800 mr-2">Schema (JSON): </label>
-            <div id="schemator" style="height: 30em" x-init="() => {
+
+        <div class="mb-3">
+            <label class="form-label-sm">Application</label>
+            <select class="form-select" x-model="application" x-init="fetchApplications" aria-label="Application">
+                <option value="">Select Application...</option>
+                <template x-for="app in applications">
+                    <option :value="app.application" x-text="app.application"></option>
+                </template>
+            </select>
+        </div>
+
+        <div class="mb-0">
+            <label class="form-label-sm">JSON Schema</label>
+            <div id="schemator" style="height: 280px;" x-init="() => {
                 ide = ace.edit($el);
                 ide.session.setMode('ace/mode/json');
-            }" @keydown.cmd.s.prevent="() => {
-                supertoast('info', 'Click the save button below to save this action')
-            }"></div>
+            }" @keydown.cmd.s.prevent="supertoast('info', 'Click Save to save this action')"></div>
         </div>
     </div>
-    <div class="modal-card-foot">
-        <button class="button primary" @click="saveAction">Save Action</button>
+
+    <div class="modal-footer">
+        <button class="btn btn-sm btn-outline-secondary" @click="showModal = false">Cancel</button>
+        <button class="btn btn-sm btn-dark d-inline-flex align-items-center gap-1" @click="saveAction">
+            <span class="material-icons" style="font-size: 16px;">save</span>
+            Save Action
+        </button>
     </div>
 </span>
 {% endblock %}

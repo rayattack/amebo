@@ -33,6 +33,23 @@ class Application(Model):
         return '***'
 
 
+class Provision(Model):
+    application: str = Field(min_length=1)
+    address: AnyHttpUrl
+    timestamped: datetime = Field(default_factory=datetime.now)
+
+    @classmethod
+    @field_validator('application')
+    def no_spaces_provision(cls, val: str) -> str:
+        if val.count(' '): raise ValueError('Application name can not contain spaces')
+        if not val.isalnum(): raise ValueError('Application name can only contain alphabets and numbers')
+        return val
+
+
+class SecretUpdate(Model):
+    secret: str = Field(min_length=16)
+
+
 class Location(Model):
     location: AnyHttpUrl
     secret: str

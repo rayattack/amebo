@@ -1,4 +1,5 @@
-from functools import wraps
+import logging
+from functools import lru_cache, wraps
 from http import HTTPStatus
 from inspect import iscoroutinefunction
 from sqlite3 import Connection
@@ -11,6 +12,13 @@ from pydantic import BaseModel
 
 from amebo.utils.structs import Lookup
 from amebo.constants.literals import DB
+
+logger = logging.getLogger('amebo.providers')
+
+
+@lru_cache(maxsize=1024)
+def _compile_schema(schema_json: str):
+    return compile(loads(schema_json))
 
 
 class Executor(object):
@@ -31,8 +39,7 @@ class Executor(object):
 
     async def _pg(self, query: str, *args):
         if self.db is None:
-            # Handle case where database connection failed (e.g., in tests)
-            print("Warning: PostgreSQL database connection is None, skipping query")
+            logger.warning('PostgreSQL database connection is None, skipping query')
             if self._fetching == 1: return None
             if self._fetching > 1: return []
             else: return None
@@ -48,7 +55,9 @@ class Executor(object):
         try:
             if self._fetching == 1: return cursor.execute(query, args).fetchone()
             if self._fetching > 1: return cursor.execute(query, args).fetchall()
-            else: return cursor.execute(query, args); self.db.commit()
+            else:
+                cursor.execute(query, args)
+                self.db.commit()
         except Exception as exc: raise exc
         finally: cursor.close()
 
@@ -100,9 +109,8 @@ def expects(Model: BaseModel):
             except Exception as exc:
                 error = exc.errors()[0]
                 res.status = HTTPStatus.BAD_REQUEST
-                print('-' * 20, error)
+                logger.debug('Validation error: %s', error)
                 res.body = {'error': f"{error.get('loc')[0]} - {error.get('msg')}"}
-                print('-' * 10, res.body)
                 return
 
             if iscoroutinefunction(func): await func(req, res, ctx)
@@ -112,12 +120,12 @@ def expects(Model: BaseModel):
 
 
 def inspects(schema: dict):
-    validation = compile(schema)  # validictory?
+    validation = compile(schema)
     def decorator(func):
         @wraps(func)
         async def delegate(req: Request, res: Response, ctx: Context):
             try: payload = validation(loads(req.body))
-            except: return res.out(HTTPStatus.NOT_ACCEPTABLE, 'Invalid data detected')
+            except Exception: return res.out(HTTPStatus.NOT_ACCEPTABLE, 'Invalid data detected')
             ctx.keep('data', Lookup({key: value for key, value in payload.items() if value}))
             return await func(req, res, ctx)
         return delegate
