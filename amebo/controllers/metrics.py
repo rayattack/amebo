@@ -5,6 +5,7 @@ from heaven import Context, Request, Response
 
 from amebo.decorators.formatters import jsonify
 from amebo.decorators.providers import contextualize
+from amebo.decorators.security import protected
 from amebo.controllers.gists import _timeline_cutoff, GISTS_FROM
 
 
@@ -22,6 +23,7 @@ _COUNTS = '''
 
 
 @jsonify
+@protected
 @contextualize
 async def deliveries(req: Request, res: Response, ctx: Context):
     """Top-card aggregates for the dashboard over a selectable window."""
@@ -68,6 +70,7 @@ async def deliveries(req: Request, res: Response, ctx: Context):
 
 
 @jsonify
+@protected
 @contextualize
 async def subscriptions(req: Request, res: Response, ctx: Context):
     """Per-subscription health: success vs failed counts and most recent error."""
@@ -126,6 +129,7 @@ async def subscriptions(req: Request, res: Response, ctx: Context):
 
 
 @jsonify
+@protected
 @contextualize
 async def versions(req: Request, res: Response, ctx: Context):
     """Versioning / migration-debt analytics: action-family count, lifecycle

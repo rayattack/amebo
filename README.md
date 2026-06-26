@@ -87,6 +87,22 @@ curl -X POST http://localhost:3310/v1/events \
   }'
 ```
 
+### 🐍 Python Client
+
+Prefer not to hand-roll HMAC signing? Use the bundled [`amebo-client`](clients/python) SDK — it signs
+requests (with optional replay protection) and verifies inbound webhooks for you:
+
+```python
+from amebo_client import AmeboClient, verify_webhook
+
+amebo = AmeboClient("http://localhost:3310", application="user-service", secret=SECRET)
+amebo.publish("user.created", {"id": "user-123", "email": "john@example.com"}, deduper="user-123")
+
+# in your webhook handler
+if not verify_webhook(request_body, request_headers["x-amebo-signature"], SECRET):
+    ...  # reject: bad signature
+```
+
 
 ## 📚 Documentation
 
